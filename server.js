@@ -3,6 +3,10 @@ require('dotenv').config();
 
 // Load database connection
 const db = require('./db');
+// Run migration automatically (creates donations table if missing)
+db.migrate.latest()
+  .then(() => console.log('📦 Migrations completed'))
+  .catch((err) => console.error('❌ Migration error:', err.message));
 
 // Import required modules
 const express = require('express');
