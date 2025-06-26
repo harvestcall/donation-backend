@@ -102,14 +102,16 @@ let recipientName = '';
 
 if (paymentData.metadata.staffId) {
   recipientType = 'staff';
-  recipientName = await getDisplayName('staff', paymentData.metadata.staffId, db);
+  recipientName = await getDisplayName('staff', parseInt(paymentData.metadata.staffId), db);
 } else if (paymentData.metadata.projectId) {
   recipientType = 'projects';
-  recipientName = await getDisplayName('projects', paymentData.metadata.projectId, db);
+  recipientName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
 }
+
 const formattedPurpose = recipientName
   ? `${recipientType === 'staff' ? 'Staff Support' : 'Project Support'} – ${recipientName}`
-  : paymentData.metadata.purpose;
+  : 'General Donation';
+
 
       // Send thank-you email using SendGrid
       const donorFirstName = paymentData.metadata.donorName?.split(' ')[0] || 'Friend';
