@@ -181,6 +181,73 @@ console.log('📧 Branded thank-you email sent via SendGrid!');
 // Set port
 const PORT = process.env.PORT || 5000;
 
+app.get('/admin/donations', async (req, res) => {
+  try {
+    const donations = await db('donations').orderBy('id', 'desc');
+
+    let tableRows = donations.map(d => {
+      const metadata = JSON.parse(d.metadata || '{}');
+      const donorName = metadata.donorName || '-';
+      const purpose = metadata.purpose || '-';
+      const donationType = metadata.donationType || '-';
+      const date = new Date(d.created_at || d.timestamp || Date.now()).toLocaleDateString();
+
+      return `
+        <tr>
+          <td>${donorName}</td>
+          <td>${d.email}</td>
+          <td>₦${(d.amount / 100).toLocaleString()}</td>
+          <td>${d.currency}</td>
+          <td>${purpose}</td>
+          <td>${donationType}</td>
+          <td>${d.reference}</td>
+          <td>${date}</td>
+        </tr>`;
+    }).join('');
+
+    const html = `
+      <html>
+        <head>
+          <title>Donations Admin</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 30px; }
+            h2 { color: #003366; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
+            th { background-color: #f4f4f4; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+          </style>
+        </head>
+        <body>
+          <h2>🧾 Donation Records</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Donor</th>
+                <th>Email</th>
+                <th>Amount</th>
+                <th>Currency</th>
+                <th>Purpose</th>
+                <th>Type</th>
+                <th>Reference</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    res.send(html);
+  } catch (error) {
+    console.error('❌ Error loading donations:', error.message);
+    res.status(500).send('Something went wrong.');
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
