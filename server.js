@@ -3,7 +3,8 @@ require('dotenv').config();
 
 // Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
-  if (!id || !type) return null;
+  // Add extra safety check for numbers
+  if (!id || isNaN(id)) return null;
 
   try {
     const result = await db(type).where('id', id).first();
@@ -74,6 +75,7 @@ app.post('/initialize-payment', async (req, res) => {
   }
 });
 
+
 // Webhook for payment verification
 app.post('/webhook', async (req, res) => {
   try {
@@ -83,7 +85,6 @@ app.post('/webhook', async (req, res) => {
       const paymentData = event.data;
       console.log('✅ Verified Payment:', paymentData.reference);
       console.log('🔎 Payment Metadata:', paymentData.metadata);
-
 
       // Save to database
       await db('donations').insert({
@@ -97,118 +98,255 @@ app.post('/webhook', async (req, res) => {
       console.log('✅ Donation saved to database!');
 
       // Determine who the donation is for
-let recipientType = '';
-let recipientName = '';
+      let recipientType = '';
+      let recipientName = '';
+      let purposeText = 'General Donation';
 
-if (paymentData.metadata.staffId) {
-  recipientType = 'staff';
-  recipientName = await getDisplayName('staff', parseInt(paymentData.metadata.staffId), db);
-} else if (paymentData.metadata.projectId) {
-  recipientType = 'projects';
-  recipientName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
-}
+      if (paymentData.metadata.staffId) {
+        recipientType = 'staff';
+        recipientName = await getDisplayName('staff', parseInt(paymentData.metadata.staffId), db);
+        if (recipientName) {
+          purposeText = `Staff Support -- ${recipientName}`;
+        }
+      } else if (paymentData.metadata.projectId) {
+        recipientType = 'projects';
+        recipientName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
+        if (recipientName) {
+          purposeText = `Project Support -- ${recipientName}`;
+        }
+      }
 
-const formattedPurpose = recipientName
-  ? `${recipientType === 'staff' ? 'Staff Support' : 'Project Support'} – ${recipientName}`
-  : 'General Donation';
-
-
-      // Send thank-you email using SendGrid
+      // Send beautiful thank-you email
       const donorFirstName = paymentData.metadata.donorName?.split(' ')[0] || 'Friend';
-const formattedAmount = (paymentData.amount / 100).toLocaleString();
-const donationDate = new Date().toLocaleDateString('en-US', {
-  year: 'numeric', month: 'long', day: 'numeric'
-});
+      const formattedAmount = paymentData.currency === 'USD'
+        ? `$${(paymentData.amount / 100).toFixed(2)}`
+        : `₦${(paymentData.amount / 100).toLocaleString()}`;
+      
+      const donationDate = new Date().toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+      });
 
-await sgMail.send({
-  to: paymentData.customer.email,
-  from: {
-    name: 'Harvest Call Ministries',
-    email: 'giving@harvestcallafrica.org'
-  },
-  subject: `Thank You, ${donorFirstName}! Your Donation is Received`,
-  html: `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; color: #333; background-color: #f2f2f2; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff; }
-        .header { text-align: center; padding: 30px 0; }
-        .logo { max-width: 140px; margin-bottom: 10px; }
-        .content { padding: 20px; }
-        .highlight { color: #E67E22; font-weight: bold; }
-        .details { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
-        .impact-statement { font-style: italic; color: #003366; margin: 25px 0; }
-        .button {
-          display: inline-block;
-          background: #2E7D32;
-          color: #fff !important;
-          padding: 12px 24px;
-          text-decoration: none;
-          border-radius: 4px;
-          margin: 15px 0;
-        }
-        .footer {
-          text-align: center;
-          margin-top: 40px;
-          font-size: 12px;
-          color: #888;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <img src="https://harvestcallafrica.org/logo.png" alt="Harvest Call Ministries" class="logo" />
-        </div>
+      await sgMail.send({
+        to: paymentData.customer.email,
+        from: {
+          name: 'Harvest Call Ministries',
+          email: 'giving@harvestcallafrica.org'
+        },
+        subject: `Thank You, ${donorFirstName}! Your Generosity is Making a Difference`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Thank You for Your Donation</title>
+            <style>
+              /* Modern email-friendly CSS */
+              body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333333;
+                background-color: #f8f9fa;
+                margin: 0;
+                padding: 0;
+              }
+              
+              .container {
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #ffffff;
+              }
+              
+              .header {
+                background: linear-gradient(135deg, #003366 0%, #2E7D32 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+                border-radius: 8px 8px 0 0;
+              }
+              
+              .header-title {
+                font-size: 28px;
+                font-weight: 700;
+                margin-bottom: 10px;
+                letter-spacing: -0.5px;
+              }
+              
+              .header-subtitle {
+                font-size: 18px;
+                font-weight: 300;
+                max-width: 500px;
+                margin: 0 auto;
+                line-height: 1.5;
+                color: #fdf5e6;
+              }
+              
+              .content {
+                padding: 30px;
+              }
+              
+              .thank-you {
+                font-size: 24px;
+                color: #003366;
+                margin-bottom: 25px;
+                font-weight: 700;
+                text-align: center;
+              }
+              
+              .highlight {
+                color: #E67E22;
+                font-weight: 700;
+                font-size: 20px;
+              }
+              
+              .details-card {
+                background: #fdf5e6;
+                padding: 25px;
+                border-radius: 12px;
+                margin: 25px 0;
+                border: 1px solid #f0e6d6;
+              }
+              
+              .detail-row {
+                display: flex;
+                margin-bottom: 12px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid #f0e6d6;
+              }
+              
+              .detail-label {
+                font-weight: 600;
+                color: #8D6E63;
+                min-width: 120px;
+              }
+              
+              .detail-value {
+                flex: 1;
+                font-weight: 500;
+              }
+              
+              .impact-statement {
+                font-style: italic;
+                color: #2E7D32;
+                margin: 30px 0;
+                padding: 20px;
+                background: #e8f5e9;
+                border-radius: 8px;
+                text-align: center;
+                font-size: 18px;
+                border-left: 4px solid #2E7D32;
+              }
+              
+              .cta-button {
+                display: block;
+                width: 70%;
+                max-width: 300px;
+                margin: 30px auto;
+                padding: 16px;
+                background: #E67E22;
+                color: white !important;
+                text-align: center;
+                text-decoration: none;
+                font-weight: 700;
+                font-size: 18px;
+                border-radius: 8px;
+                transition: all 0.3s ease;
+              }
+              
+              .cta-button:hover {
+                background: #d35400;
+                transform: translateY(-2px);
+              }
+              
+              .signature {
+                margin-top: 30px;
+                border-top: 1px solid #e0e0e0;
+                padding-top: 20px;
+                text-align: center;
+              }
+              
+              .footer {
+                text-align: center;
+                margin-top: 40px;
+                font-size: 14px;
+                color: #8D6E63;
+              }
+              
+              .footer a {
+                color: #2E7D32;
+                text-decoration: none;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1 class="header-title">Thank You for Your Support!</h1>
+                <p class="header-subtitle">Your donation is helping transform lives across Africa</p>
+              </div>
+              
+              <div class="content">
+                <h2 class="thank-you">Thank You, ${donorFirstName}!</h2>
+                
+                <p>We're incredibly grateful for your generous donation of <span class="highlight">${formattedAmount}</span> to Harvest Call Ministries. Your support is making a tangible difference in advancing God's kingdom across Africa.</p>
+                
+                <div class="details-card">
+                  <div class="detail-row">
+                    <div class="detail-label">Reference:</div>
+                    <div class="detail-value">${paymentData.reference}</div>
+                  </div>
+                  <div class="detail-row">
+                    <div class="detail-label">Donation Type:</div>
+                    <div class="detail-value">${paymentData.metadata.donationType}</div>
+                  </div>
+                  <div class="detail-row">
+                    <div class="detail-label">Purpose:</div>
+                    <div class="detail-value">${purposeText}</div>
+                  </div>
+                  <div class="detail-row">
+                    <div class="detail-label">Date:</div>
+                    <div class="detail-value">${donationDate}</div>
+                  </div>
+                </div>
+                
+                <p class="impact-statement">"Your partnership enables indigenous missionaries to bring the Gospel to unreached communities."</p>
+                
+                <p>We've attached your tax receipt to this email for your records. This receipt may be used for tax deduction purposes according to your local regulations.</p>
+                
+                <a href="https://harvestcallafrica.org/impact" class="cta-button">
+                  See How Your Donation Makes an Impact
+                </a>
+                
+                <div class="signature">
+                  <p>With heartfelt gratitude,</p>
+                  <p><strong>The Harvest Call Ministries Team</strong></p>
+                  <p>Abuja, Nigeria</p>
+                </div>
+              </div>
+              
+              <div class="footer">
+                <p>Harvest Call Ministries &bull; Abuja, Nigeria</p>
+                <p><a href="https://harvestcallafrica.org">harvestcallafrica.org</a> &bull; <a href="mailto:info@harvestcallafrica.org">info@harvestcallafrica.org</a></p>
+                <p>You're receiving this email because you made a donation to Harvest Call Ministries.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      });
 
-        <div class="content">
-          <h2>Thank You, ${donorFirstName}!</h2>
-
-          <p>Your generous donation of <span class="highlight">₦${formattedAmount}</span> has been received and will make a significant impact in advancing God's kingdom across Africa.</p>
-
-          <div class="details">
-            <p><strong>Reference Number:</strong> ${paymentData.reference}</p>
-            <p><strong>Donation Type:</strong> ${paymentData.metadata.donationType}</p>
-            <p><strong>Purpose:</strong> ${formattedPurpose}</p>
-            <p><strong>Date:</strong> ${donationDate}</p>
-          </div>
-
-          <p class="impact-statement">"Your support enables indigenous missionaries to bring the Gospel to unreached communities."</p>
-
-          <p>We've attached your tax receipt to this email for your records.</p>
-
-          <p>To see how your donation is making a difference:</p>
-          <a href="https://harvestcallafrica.org/" class="button">View Our Impact</a>
-
-          <p>If you have any questions about your donation, reply to this email or contact us at <a href="mailto:giving@harvestcallafrica.org">giving@harvestcallafrica.org</a>.</p>
-
-          <p>With gratitude,<br><strong>The Harvest Call Ministries Team</strong></p>
-        </div>
-
-        <div class="footer">
-          <p>Harvest Call Ministries • Abuja, Nigeria</p>
-          <p><a href="https://harvestcallafrica.org" style="color: #2E7D32;">harvestcallafrica.org</a></p>
-          <p>You’re receiving this email because you made a donation to Harvest Call Ministries.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `
-});
-
-console.log('📧 Branded thank-you email sent via SendGrid!');
-
+      console.log('📧 Beautiful thank-you email sent via SendGrid!');
     }
 
     res.status(200).send('Webhook received');
 
   } catch (error) {
-    console.error('❌ Error saving payment:', error.message);
+    console.error('❌ Error processing webhook:', error.message);
     res.status(400).json({ error: error.message });
   }
 });
+
 
 // Set port
 const PORT = process.env.PORT || 5000;
