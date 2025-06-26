@@ -82,27 +82,92 @@ app.post('/webhook', async (req, res) => {
       console.log('✅ Donation saved to database!');
 
       // Send thank-you email using SendGrid
-      await sgMail.send({
-        to: paymentData.customer.email,
-        from: {
-          name: 'Harvest Call Ministries',
-          email: 'giving@harvestcallafrica.org' // Verified sender
-        },
-        subject: 'Thank You for Your Donation',
-        text: `Dear ${paymentData.metadata.donorName},
+      const donorFirstName = paymentData.metadata.donorName?.split(' ')[0] || 'Friend';
+const formattedAmount = (paymentData.amount / 100).toLocaleString();
+const donationDate = new Date().toLocaleDateString('en-US', {
+  year: 'numeric', month: 'long', day: 'numeric'
+});
 
-Thank you for your generous donation of ₦${paymentData.amount / 100} to Harvest Call Ministries.
+await sgMail.send({
+  to: paymentData.customer.email,
+  from: {
+    name: 'Harvest Call Ministries',
+    email: 'giving@harvestcallafrica.org'
+  },
+  subject: `Thank You, ${donorFirstName}! Your Donation is Received`,
+  html: `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; color: #333; background-color: #f2f2f2; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff; }
+        .header { text-align: center; padding: 30px 0; }
+        .logo { max-width: 140px; margin-bottom: 10px; }
+        .content { padding: 20px; }
+        .highlight { color: #E67E22; font-weight: bold; }
+        .details { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .impact-statement { font-style: italic; color: #003366; margin: 25px 0; }
+        .button {
+          display: inline-block;
+          background: #2E7D32;
+          color: #fff !important;
+          padding: 12px 24px;
+          text-decoration: none;
+          border-radius: 4px;
+          margin: 15px 0;
+        }
+        .footer {
+          text-align: center;
+          margin-top: 40px;
+          font-size: 12px;
+          color: #888;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="https://harvestcallafrica.org/logo.png" alt="Harvest Call Ministries" class="logo" />
+        </div>
 
-Reference: ${paymentData.reference}
-Donation Type: ${paymentData.metadata.donationType}
-Purpose: ${paymentData.metadata.purpose}
+        <div class="content">
+          <h2>Thank You, ${donorFirstName}!</h2>
 
-We are deeply grateful for your partnership.
+          <p>Your generous donation of <span class="highlight">₦${formattedAmount}</span> has been received and will make a significant impact in advancing God's kingdom across Africa.</p>
 
-– Harvest Call Team`
-      });
+          <div class="details">
+            <p><strong>Reference Number:</strong> ${paymentData.reference}</p>
+            <p><strong>Donation Type:</strong> ${paymentData.metadata.donationType}</p>
+            <p><strong>Purpose:</strong> ${paymentData.metadata.purpose}</p>
+            <p><strong>Date:</strong> ${donationDate}</p>
+          </div>
 
-      console.log('📧 Thank-you email sent via SendGrid!');
+          <p class="impact-statement">"Your support enables indigenous missionaries to bring the Gospel to unreached communities."</p>
+
+          <p>We've attached your tax receipt to this email for your records.</p>
+
+          <p>To see how your donation is making a difference:</p>
+          <a href="https://harvestcallafrica.org/" class="button">View Our Impact</a>
+
+          <p>If you have any questions about your donation, reply to this email or contact us at <a href="mailto:giving@harvestcallafrica.org">giving@harvestcallafrica.org</a>.</p>
+
+          <p>With gratitude,<br><strong>The Harvest Call Ministries Team</strong></p>
+        </div>
+
+        <div class="footer">
+          <p>Harvest Call Ministries • Abuja, Nigeria</p>
+          <p><a href="https://harvestcallafrica.org" style="color: #2E7D32;">harvestcallafrica.org</a></p>
+          <p>You’re receiving this email because you made a donation to Harvest Call Ministries.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+});
+
+console.log('📧 Branded thank-you email sent via SendGrid!');
+
     }
 
     res.status(200).send('Webhook received');
