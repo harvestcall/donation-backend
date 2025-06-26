@@ -4,7 +4,10 @@ require('dotenv').config();
 // Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
   // Add extra safety check for numbers
-  if (!id || isNaN(id)) return null;
+  if (!id || isNaN(id)) {
+    console.log(`Invalid ID: ${id} for ${type}`);
+    return null;
+  }
 
   try {
     const result = await db(type).where('id', id).first();
@@ -85,10 +88,6 @@ app.post('/webhook', async (req, res) => {
       const paymentData = event.data;
       console.log('✅ Verified Payment:', paymentData.reference);
       console.log('🔎 Payment Metadata:', paymentData.metadata);
-      
-      console.log(`Recipient Type: ${recipientType}`); // ADDED
-  console.log(`Recipient Name: ${recipientName}`); // ADDED
-  console.log(`Formatted Purpose: ${formattedPurpose}`);
 
       // Save to database
       await db('donations').insert({
@@ -101,34 +100,34 @@ app.post('/webhook', async (req, res) => {
 
       console.log('✅ Donation saved to database!');
 
-      // Determine who the donation is for
-      let recipientType = '';
-      let recipientName = '';
+      // Initialize variables with default values
       let purposeText = 'General Donation';
 
-      if (paymentData.metadata.staffId) {
-        recipientType = 'staff';
-        recipientName = await getDisplayName('staff', parseInt(paymentData.metadata.staffId), db);
-        if (recipientName) {
-          purposeText = `Staff Support -- ${recipientName}`;
+      // Check if we have staffId or projectId
+      if (paymentData.metadata.staffId && paymentData.metadata.staffId.trim() !== '') {
+        const staffName = await getDisplayName('staff', parseInt(paymentData.metadata.staffId), db);
+        if (staffName) {
+          purposeText = `Staff Support -- ${staffName}`;
         }
-      } else if (paymentData.metadata.projectId) {
-        recipientType = 'projects';
-        recipientName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
-        if (recipientName) {
-          purposeText = `Project Support -- ${recipientName}`;
+      } else if (paymentData.metadata.projectId && paymentData.metadata.projectId.trim() !== '') {
+        const projectName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
+        if (projectName) {
+          purposeText = `Project Support -- ${projectName}`;
         }
       }
 
+      console.log('Purpose:', purposeText);
+
       // Send beautiful thank-you email
       const donorFirstName = paymentData.metadata.donorName?.split(' ')[0] || 'Friend';
-      const formattedAmount = paymentData.currency === 'USD'
-        ? `$${(paymentData.amount / 100).toFixed(2)}`
+      const formattedAmount = paymentData.currency === 'USD' 
+        ? `$${(paymentData.amount / 100).toFixed(2)}` 
         : `₦${(paymentData.amount / 100).toLocaleString()}`;
       
       const donationDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric', month: 'long', day: 'numeric'
       });
+
 
       await sgMail.send({
         to: paymentData.customer.email,
