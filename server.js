@@ -13,8 +13,11 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const axios = require('axios');
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 const app = express();
+
+// Set up SendGrid
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // Middleware setup
 app.use(bodyParser.json());
@@ -32,7 +35,7 @@ app.post('/initialize-payment', async (req, res) => {
       amount: amountInKobo,
       currency,
       metadata,
-      callback_url: "https://yourfrontend.com/thank-you" // <-- Replace with your real thank-you page later
+      callback_url: "https://yourfrontend.com/thank-you" // Replace with real page later
     };
 
     const response = await axios.post(
@@ -76,28 +79,19 @@ app.post('/webhook', async (req, res) => {
         metadata: JSON.stringify(paymentData.metadata)
       });
 
-      // Confirm save in console
       console.log('✅ Donation saved to database!');
 
-      // Set up email transporter
-const transporter = nodemailer.createTransport({
-  host: 'smtp.ethereal.email',
-  port: 465,
-  secure: true,
-  auth: {
-    user: 'oe7tpq5yy56mstbv@ethereal.email',
-    pass: 'Q8bQRCmRwuaTmH92uU'
-  }
-});
+      // Send thank-you email using SendGrid
+      await sgMail.send({
+        to: paymentData.customer.email,
+        from: {
+          name: 'Harvest Call Ministries',
+          email: 'giving@harvestcallafrica.org' // Verified sender
+        },
+        subject: 'Thank You for Your Donation',
+        text: `Dear ${paymentData.metadata.donorName},
 
-// Send thank-you email
-await transporter.sendMail({
-  from: '"Harvest Call" <donations@harvestcallafrica.org>',
-  to: paymentData.customer.email,
-  subject: 'Thank You for Your Donation',
-  text: `Dear ${paymentData.metadata.donorName},
-
-Thank you for your generous donation of ₦${paymentData.amount / 100} to Harvest Call.
+Thank you for your generous donation of ₦${paymentData.amount / 100} to Harvest Call Ministries.
 
 Reference: ${paymentData.reference}
 Donation Type: ${paymentData.metadata.donationType}
@@ -106,10 +100,9 @@ Purpose: ${paymentData.metadata.purpose}
 We are deeply grateful for your partnership.
 
 – Harvest Call Team`
-});
+      });
 
-console.log('📧 Thank-you email sent!');
-
+      console.log('📧 Thank-you email sent via SendGrid!');
     }
 
     res.status(200).send('Webhook received');
@@ -119,7 +112,6 @@ console.log('📧 Thank-you email sent!');
     res.status(400).json({ error: error.message });
   }
 });
-
 
 // Set port
 const PORT = process.env.PORT || 5000;
