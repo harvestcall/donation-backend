@@ -1,6 +1,19 @@
 // Load environment variables
 require('dotenv').config();
 
+// Helper: Fetch name of staff or project
+async function getDisplayName(type, id, db) {
+  if (!id || !type) return null;
+
+  try {
+    const result = await db(type).where('id', id).first();
+    return result ? result.name : null;
+  } catch (err) {
+    console.error(`❌ Error fetching ${type} name:`, err.message);
+    return null;
+  }
+}
+
 // Load database connection
 const db = require('./db');
 // Run migration automatically (creates donations table if missing)
@@ -69,6 +82,8 @@ app.post('/webhook', async (req, res) => {
     if (event.event === 'charge.success') {
       const paymentData = event.data;
       console.log('✅ Verified Payment:', paymentData.reference);
+      console.log('🔎 Payment Metadata:', paymentData.metadata);
+
 
       // Save to database
       await db('donations').insert({
@@ -80,6 +95,21 @@ app.post('/webhook', async (req, res) => {
       });
 
       console.log('✅ Donation saved to database!');
+
+      // Determine who the donation is for
+let recipientType = '';
+let recipientName = '';
+
+if (paymentData.metadata.staffId) {
+  recipientType = 'staff';
+  recipientName = await getDisplayName('staff', paymentData.metadata.staffId, db);
+} else if (paymentData.metadata.projectId) {
+  recipientType = 'projects';
+  recipientName = await getDisplayName('projects', paymentData.metadata.projectId, db);
+}
+const formattedPurpose = recipientName
+  ? `${recipientType === 'staff' ? 'Staff Support' : 'Project Support'} – ${recipientName}`
+  : paymentData.metadata.purpose;
 
       // Send thank-you email using SendGrid
       const donorFirstName = paymentData.metadata.donorName?.split(' ')[0] || 'Friend';
@@ -139,7 +169,7 @@ await sgMail.send({
           <div class="details">
             <p><strong>Reference Number:</strong> ${paymentData.reference}</p>
             <p><strong>Donation Type:</strong> ${paymentData.metadata.donationType}</p>
-            <p><strong>Purpose:</strong> ${paymentData.metadata.purpose}</p>
+            <p><strong>Purpose:</strong> ${formattedPurpose}</p>
             <p><strong>Date:</strong> ${donationDate}</p>
           </div>
 
@@ -437,6 +467,27 @@ app.get('/admin/donations', async (req, res) => {
   }
 });
 
+// Get all active staff
+app.get('/staff', async (req, res) => {
+  try {
+    const staff = await db('staff').where({ active: true }).orderBy('name');
+    res.json(staff);
+  } catch (error) {
+    console.error('❌ Error fetching staff:', error.message);
+    res.status(500).json({ error: 'Failed to load staff list' });
+  }
+});
+
+// Get all projects
+app.get('/projects', async (req, res) => {
+  try {
+    const projects = await db('projects').orderBy('name');
+    res.json(projects);
+  } catch (error) {
+    console.error('❌ Error fetching projects:', error.message);
+    res.status(500).json({ error: 'Failed to load project list' });
+  }
+});
 
 // Start server
 app.listen(PORT, () => {
