@@ -85,6 +85,10 @@ app.post('/webhook', async (req, res) => {
       const paymentData = event.data;
       console.log('✅ Verified Payment:', paymentData.reference);
       console.log('🔎 Payment Metadata:', paymentData.metadata);
+      
+      console.log(`Recipient Type: ${recipientType}`); // ADDED
+  console.log(`Recipient Name: ${recipientName}`); // ADDED
+  console.log(`Formatted Purpose: ${formattedPurpose}`);
 
       // Save to database
       await db('donations').insert({
