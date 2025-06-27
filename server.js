@@ -801,6 +801,109 @@ app.get('/admin/summary', async (req, res) => {
   }
 });
 
+// Staff-Specific Dashboard
+app.get('/staff-dashboard', async (req, res) => {
+  try {
+    const staffId = req.query.staffId;
+
+    if (!staffId) {
+      return res.status(400).send('Missing staffId');
+    }
+
+    const donations = await db('donations').orderBy('created_at', 'desc');
+    const staff = await db('staff').where('id', parseInt(staffId)).first();
+
+    if (!staff) {
+      return res.status(404).send('Staff not found');
+    }
+
+    const monthMap = {};
+
+    for (const d of donations) {
+      const metadata = JSON.parse(d.metadata || '{}');
+      if (metadata.staffId !== String(staffId)) continue;
+
+      const date = new Date(d.created_at || d.timestamp || Date.now());
+      const monthKey = date.toLocaleString('default', { year: 'numeric', month: 'long' });
+
+      if (!monthMap[monthKey]) {
+        monthMap[monthKey] = {
+          total: 0,
+          entries: [],
+        };
+      }
+
+      const donor = metadata.donorName || '-';
+      const amount = d.amount / 100;
+      const ref = d.reference;
+      const donationType = metadata.donationType || '-';
+
+      monthMap[monthKey].total += amount;
+      monthMap[monthKey].entries.push({
+        donor,
+        amount,
+        donationType,
+        ref,
+        date: date.toLocaleDateString('en-US', {
+          year: 'numeric', month: 'short', day: 'numeric'
+        })
+      });
+    }
+
+    let html = `<h1 style="color:#2E7D32;">💼 Support Report for ${staff.name}</h1>`;
+
+    for (const [month, data] of Object.entries(monthMap)) {
+      html += `
+        <div style="margin-bottom: 30px;">
+          <h2>${month}</h2>
+          <p><strong>Total:</strong> ₦${data.total.toLocaleString()}</p>
+          <table style="width:100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background:#f0f0f0;">
+                <th style="border:1px solid #ccc; padding:8px;">Donor</th>
+                <th style="border:1px solid #ccc; padding:8px;">Amount</th>
+                <th style="border:1px solid #ccc; padding:8px;">Type</th>
+                <th style="border:1px solid #ccc; padding:8px;">Reference</th>
+                <th style="border:1px solid #ccc; padding:8px;">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      for (const entry of data.entries) {
+        html += `
+          <tr>
+            <td style="border:1px solid #ccc; padding:8px;">${entry.donor}</td>
+            <td style="border:1px solid #ccc; padding:8px;">₦${entry.amount.toLocaleString()}</td>
+            <td style="border:1px solid #ccc; padding:8px;">${entry.donationType}</td>
+            <td style="border:1px solid #ccc; padding:8px;">${entry.ref}</td>
+            <td style="border:1px solid #ccc; padding:8px;">${entry.date}</td>
+          </tr>
+        `;
+      }
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    res.send(`
+      <html>
+        <head>
+          <title>${staff.name} – Dashboard</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; padding: 30px; background: #f8f9fa;">
+          ${html}
+        </body>
+      </html>
+    `);
+  } catch (err) {
+    console.error('❌ Staff dashboard error:', err.message);
+    res.status(500).send('Something went wrong.');
+  }
+});
 
 // Start server
 app.listen(PORT, () => {
