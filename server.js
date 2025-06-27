@@ -120,7 +120,7 @@ app.post('/webhook', async (req, res) => {
   if (staffName) {
     purposeText = `Staff Support -- ${staffName}`;
   }
-} 
+
 // Keep projectId handling the same
       } else if (paymentData.metadata.projectId && paymentData.metadata.projectId.trim() !== '') {
         const projectName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
