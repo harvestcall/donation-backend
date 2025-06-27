@@ -88,6 +88,16 @@ app.get('/debug/staff', async (req, res) => {
   }
 });
 
+// Debug: Get all donations
+app.get('/debug/donations', async (req, res) => {
+  try {
+    const donations = await db('donations').select('*');
+    res.json(donations);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Payment initialization endpoint
 app.post('/initialize-payment', async (req, res) => {
   try {
