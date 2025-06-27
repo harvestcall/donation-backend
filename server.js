@@ -682,6 +682,116 @@ app.get('/projects', async (req, res) => {
   }
 });
 
+// server.js (partial addition for summary route)
+
+app.get('/admin/summary', async (req, res) => {
+  try {
+    const donations = await db('donations').orderBy('created_at', 'desc');
+
+    const monthMap = {};
+
+    for (const d of donations) {
+      const metadata = JSON.parse(d.metadata || '{}');
+      const donorName = metadata.donorName || '-';
+      const staffId = metadata.staffId;
+      const projectId = metadata.projectId;
+
+      const date = new Date(d.created_at || d.timestamp || Date.now());
+      const monthKey = date.toLocaleString('default', { year: 'numeric', month: 'long' });
+
+      if (!monthMap[monthKey]) {
+        monthMap[monthKey] = {
+          total: 0,
+          totalStaff: 0,
+          totalProject: 0,
+          donors: new Set(),
+          records: {},
+        };
+      }
+
+      const currencyAmount = d.amount / 100;
+      monthMap[monthKey].total += currencyAmount;
+      monthMap[monthKey].donors.add(d.email);
+
+      let key = null;
+      let label = '';
+      if (staffId) {
+        const staff = await db('staff').where('id', parseInt(staffId)).first();
+        key = `staff-${staffId}`;
+        label = `Staff – ${staff?.name || 'Unknown Staff'}`;
+        monthMap[monthKey].totalStaff += currencyAmount;
+      } else if (projectId) {
+        const project = await db('projects').where('id', parseInt(projectId)).first();
+        key = `project-${projectId}`;
+        label = `Project – ${project?.name || 'Unknown Project'}`;
+        monthMap[monthKey].totalProject += currencyAmount;
+      }
+
+      if (key) {
+        if (!monthMap[monthKey].records[key]) {
+          monthMap[monthKey].records[key] = {
+            label,
+            total: 0,
+          };
+        }
+        monthMap[monthKey].records[key].total += currencyAmount;
+      }
+    }
+
+    // Build HTML
+    let content = `<h1 style="color:#003366;">📊 Monthly Donation Summary</h1>`;
+    for (const [month, data] of Object.entries(monthMap)) {
+      const donorCount = data.donors.size;
+      const avgGift = donorCount ? (data.total / donorCount).toFixed(2) : 0;
+
+      content += `
+        <div style="margin-bottom: 40px;">
+          <h2 style="color:#2E7D32;">${month}</h2>
+          <p><strong>Total Donations:</strong> ₦${data.total.toLocaleString()}</p>
+          <p><strong>Total for Staff:</strong> ₦${data.totalStaff.toLocaleString()}</p>
+          <p><strong>Total for Projects:</strong> ₦${data.totalProject.toLocaleString()}</p>
+          <p><strong>Number of Donors:</strong> ${donorCount}</p>
+          <p><strong>Average Gift:</strong> ₦${avgGift}</p>
+
+          <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+            <thead>
+              <tr style="background-color: #f4f4f4;">
+                <th style="text-align:left; padding: 10px; border: 1px solid #ccc;">Recipient</th>
+                <th style="text-align:left; padding: 10px; border: 1px solid #ccc;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      for (const r of Object.values(data.records)) {
+        content += `
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ccc;">${r.label}</td>
+            <td style="padding: 10px; border: 1px solid #ccc;">₦${r.total.toLocaleString()}</td>
+          </tr>
+        `;
+      }
+
+      content += `</tbody></table></div>`;
+    }
+
+    res.send(`
+      <html>
+        <head>
+          <title>Monthly Summary</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; padding: 30px; background: #f8f9fa;">
+          ${content}
+        </body>
+      </html>
+    `);
+  } catch (err) {
+    console.error('❌ Summary error:', err.message);
+    res.status(500).send('Failed to load summary.');
+  }
+});
+
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
