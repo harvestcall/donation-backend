@@ -3,10 +3,10 @@ require('dotenv').config();
 
 // Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
+  console.log(`🔍 Looking up ${type} ID: ${id}`);
+  
   // Convert to number if it's a string
   const numericId = typeof id === 'string' ? parseInt(id) : id;
-  
-  console.log(`🔍 Looking up ${type} ID: ${numericId} (Original: ${id})`);
   
   if (!numericId || isNaN(numericId)) {
     console.log(`❌ Invalid ID: ${id}`);
@@ -14,13 +14,22 @@ async function getDisplayName(type, id, db) {
   }
 
   try {
-    const result = await db(type).where('id', numericId).first();
+    console.log(`🔍 Querying database for ${type} with ID: ${numericId}`);
+    
+    // Get table name (use explicit name for safety)
+    const table = type === 'staff' ? 'staff' : 'projects';
+    const result = await db(table).where('id', numericId).first();
     
     if (result) {
-      console.log(`✅ Found ${type}: ${result.name}`);
+      console.log(`✅ Found ${type}:`, result);
       return result.name;
     } else {
       console.log(`❌ No ${type} found with ID: ${numericId}`);
+      
+      // List all records to help debug
+      const allRecords = await db(table).select('*');
+      console.log(`📋 All ${type} records:`, allRecords);
+      
       return null;
     }
   } catch (err) {
@@ -32,9 +41,24 @@ async function getDisplayName(type, id, db) {
 // Load database connection
 const db = require('./db');
 // Run migration automatically (creates donations table if missing)
-db.migrate.latest()
-  .then(() => console.log('📦 Migrations completed'))
-  .catch((err) => console.error('❌ Migration error:', err.message));
+async function initializeDatabase() {
+  try {
+    // Run migrations
+    await db.migrate.latest();
+    console.log('📦 Migrations completed');
+    
+    // Run seeds
+    await db.seed.run();
+    console.log('🌱 Database seeded');
+    
+    // Verify staff records
+    const staff = await db('staff').select('*');
+    console.log('👥 Staff records:', staff);
+  } catch (err) {
+    console.error('❌ Database initialization error:', err.message);
+  }
+}
+
 
 // Import required modules
 const express = require('express');
@@ -50,6 +74,18 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 // Middleware setup
 app.use(bodyParser.json());
 app.use(cors());
+
+// Add this route above your payment initialization endpoint
+app.get('/debug/staff', async (req, res) => {
+  try {
+    const staff = await db('staff').select('*');
+    console.log('Staff Records:', staff);
+    res.json(staff);
+  } catch (error) {
+    console.error('❌ Error fetching staff:', error);
+    res.status(500).json({ error: 'Failed to load staff' });
+  }
+});
 
 // Payment initialization endpoint
 app.post('/initialize-payment', async (req, res) => {
