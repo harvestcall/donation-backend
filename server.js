@@ -1111,7 +1111,7 @@ app.get('/admin/summary', async (req, res) => {
                     </div>
                     <div class="title-container">
                         <h1>Donation Summary Dashboard</h1>
-                        <p>Harvest Call Africa - Monthly Contributions Report</p>
+                        <p>Harvest Call Ministries - Monthly Contributions Report</p>
                     </div>
                 </div>
                 <div class="controls">
@@ -1199,7 +1199,7 @@ app.get('/admin/summary', async (req, res) => {
             </div>
             
             <div class="footer">
-                <p>Harvest Call Africa • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
         </div>
         
@@ -1671,7 +1671,7 @@ app.get('/staff-dashboard', async (req, res) => {
                     <div class="staff-avatar">${staff.name.charAt(0)}</div>
                     <div class="staff-info">
                         <h1>${staff.name}</h1>
-                        <p>Missionary Support Dashboard</p>
+                        <p>Staff Support Dashboard</p>
                     </div>
                 </div>
                 <div class="controls">
@@ -1778,7 +1778,7 @@ app.get('/staff-dashboard', async (req, res) => {
             </div>
             
             <div class="footer">
-                <p>Harvest Call Africa • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
         </div>
         
