@@ -697,7 +697,7 @@ app.get('/projects', async (req, res) => {
   }
 });
 
-// Admin summary route
+// Admin Summary Dashboard
 app.get('/admin/summary', async (req, res) => {
   try {
     const donations = await db('donations').orderBy('created_at', 'desc');
@@ -769,52 +769,467 @@ app.get('/admin/summary', async (req, res) => {
     const next = format(nextMonth);
     const title = current.toLocaleString('default', { year: 'numeric', month: 'long' });
 
-    // Build HTML
-    let html = `
-      <h1 style="color:#003366;">📊 Monthly Donation Summary</h1>
-      <div style="margin-bottom: 20px;">
-        <a href="/admin/summary?month=${prev}" style="margin-right: 15px;">⬅️ Previous Month</a>
-        <strong>${title}</strong>
-        <a href="/admin/summary?month=${next}" style="margin-left: 15px;">Next Month ➡️</a>
-      </div>
-      <p><strong>Total Donations:</strong> ₦${summary.total.toLocaleString()}</p>
-      <p><strong>Total for Staff:</strong> ₦${summary.totalStaff.toLocaleString()}</p>
-      <p><strong>Total for Projects:</strong> ₦${summary.totalProject.toLocaleString()}</p>
-      <p><strong>Number of Donors:</strong> ${donorCount}</p>
-      <p><strong>Average Gift:</strong> ₦${avgGift}</p>
-
-      <table style="width:100%; border-collapse:collapse; margin-top:20px;">
-        <thead>
-          <tr style="background-color:#f4f4f4;">
-            <th style="padding:10px; border:1px solid #ccc;">Recipient</th>
-            <th style="padding:10px; border:1px solid #ccc;">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
+    // Generate beautiful HTML dashboard
+    const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Donation Summary Dashboard - Harvest Call Africa</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <style>
+            :root {
+                --primary: #003366;
+                --secondary: #2E7D32;
+                --accent: #E67E22;
+                --light-bg: #f8f9fa;
+                --card-bg: #ffffff;
+                --text: #333333;
+                --text-light: #6c757d;
+                --border: #e0e0e0;
+                --success: #28a745;
+                --info: #17a2b8;
+                --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+            
+            body {
+                background-color: var(--light-bg);
+                color: var(--text);
+                line-height: 1.6;
+                padding: 20px;
+            }
+            
+            .dashboard-container {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 1px solid var(--border);
+            }
+            
+            .logo-container {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+            }
+            
+            .logo {
+                width: 50px;
+                height: 50px;
+                background: linear-gradient(135deg, var(--primary), var(--secondary));
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 22px;
+            }
+            
+            .title-container h1 {
+                color: var(--primary);
+                font-size: 28px;
+                font-weight: 700;
+                margin-bottom: 5px;
+            }
+            
+            .title-container p {
+                color: var(--text-light);
+                font-size: 16px;
+            }
+            
+            .controls {
+                display: flex;
+                gap: 15px;
+            }
+            
+            .btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 15px;
+                background: var(--primary);
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+                font-weight: 500;
+                transition: all 0.3s;
+            }
+            
+            .btn:hover {
+                background: #002244;
+                transform: translateY(-2px);
+                box-shadow: var(--shadow);
+            }
+            
+            .month-nav {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                background: var(--card-bg);
+                border-radius: 10px;
+                padding: 15px 20px;
+                box-shadow: var(--shadow);
+                margin-bottom: 30px;
+            }
+            
+            .nav-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: var(--light-bg);
+                color: var(--primary);
+                border: none;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                font-size: 18px;
+                text-decoration: none;
+            }
+            
+            .nav-btn:hover {
+                background: var(--primary);
+                color: white;
+                transform: translateY(-2px);
+            }
+            
+            .current-month {
+                font-size: 24px;
+                font-weight: 600;
+                color: var(--primary);
+                flex-grow: 1;
+                text-align: center;
+            }
+            
+            .kpi-cards {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 20px;
+                margin-bottom: 30px;
+            }
+            
+            .kpi-card {
+                background: var(--card-bg);
+                border-radius: 15px;
+                padding: 25px;
+                box-shadow: var(--shadow);
+                text-align: center;
+                transition: transform 0.3s ease;
+            }
+            
+            .kpi-card:hover {
+                transform: translateY(-5px);
+            }
+            
+            .kpi-icon {
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 15px;
+                font-size: 24px;
+            }
+            
+            .total .kpi-icon {
+                background: rgba(40, 167, 69, 0.15);
+                color: var(--success);
+            }
+            
+            .staff .kpi-icon {
+                background: rgba(231, 126, 34, 0.15);
+                color: var(--accent);
+            }
+            
+            .projects .kpi-icon {
+                background: rgba(23, 162, 184, 0.15);
+                color: var(--info);
+            }
+            
+            .donors .kpi-icon {
+                background: rgba(0, 51, 102, 0.15);
+                color: var(--primary);
+            }
+            
+            .kpi-card h3 {
+                font-size: 16px;
+                color: var(--text-light);
+                margin-bottom: 10px;
+            }
+            
+            .kpi-card .value {
+                font-size: 32px;
+                font-weight: 700;
+                margin-bottom: 5px;
+            }
+            
+            .kpi-card .sub-value {
+                font-size: 16px;
+                color: var(--text-light);
+            }
+            
+            .recipients-table {
+                background: var(--card-bg);
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: var(--shadow);
+                margin-bottom: 30px;
+            }
+            
+            .table-header {
+                padding: 20px 25px;
+                border-bottom: 1px solid var(--border);
+            }
+            
+            .table-header h2 {
+                color: var(--primary);
+                font-size: 22px;
+                font-weight: 600;
+            }
+            
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            
+            thead {
+                background: #f8fafc;
+            }
+            
+            th {
+                padding: 15px 25px;
+                text-align: left;
+                color: var(--text-light);
+                font-weight: 600;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
+            tbody tr {
+                border-bottom: 1px solid var(--border);
+                transition: background 0.2s ease;
+            }
+            
+            tbody tr:last-child {
+                border-bottom: none;
+            }
+            
+            tbody tr:hover {
+                background: #f8fafc;
+            }
+            
+            td {
+                padding: 15px 25px;
+                font-size: 16px;
+            }
+            
+            .recipient-name {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+            
+            .recipient-icon {
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: var(--light-bg);
+                color: var(--primary);
+                font-size: 18px;
+            }
+            
+            .staff-icon {
+                background: rgba(231, 126, 34, 0.1);
+                color: var(--accent);
+            }
+            
+            .project-icon {
+                background: rgba(23, 162, 184, 0.1);
+                color: var(--info);
+            }
+            
+            .amount {
+                font-weight: 600;
+                color: var(--primary);
+            }
+            
+            .footer {
+                text-align: center;
+                color: var(--text-light);
+                font-size: 14px;
+                padding: 20px;
+            }
+            
+            @media (max-width: 768px) {
+                .header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 20px;
+                }
+                
+                .controls {
+                    width: 100%;
+                    justify-content: center;
+                }
+                
+                .month-nav {
+                    flex-wrap: wrap;
+                }
+                
+                .kpi-cards {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="dashboard-container">
+            <div class="header">
+                <div class="logo-container">
+                    <div class="logo">
+                        <i class="fas fa-hands-helping"></i>
+                    </div>
+                    <div class="title-container">
+                        <h1>Donation Summary Dashboard</h1>
+                        <p>Harvest Call Africa - Monthly Contributions Report</p>
+                    </div>
+                </div>
+                <div class="controls">
+                    <a href="/admin/donations" class="btn">
+                        <i class="fas fa-list"></i> View All Donations
+                    </a>
+                </div>
+            </div>
+            
+            <div class="month-nav">
+                <a href="/admin/summary?month=${prev}" class="nav-btn">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+                <div class="current-month">${title}</div>
+                <a href="/admin/summary?month=${next}" class="nav-btn">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+            </div>
+            
+            <div class="kpi-cards">
+                <div class="kpi-card total">
+                    <div class="kpi-icon">
+                        <i class="fas fa-donate"></i>
+                    </div>
+                    <h3>Total Donations</h3>
+                    <div class="value">₦${summary.total.toLocaleString()}</div>
+                    <div class="sub-value">All Contributions</div>
+                </div>
+                
+                <div class="kpi-card staff">
+                    <div class="kpi-icon">
+                        <i class="fas fa-user-friends"></i>
+                    </div>
+                    <h3>Staff Support</h3>
+                    <div class="value">₦${summary.totalStaff.toLocaleString()}</div>
+                    <div class="sub-value">Missionary Support</div>
+                </div>
+                
+                <div class="kpi-card projects">
+                    <div class="kpi-icon">
+                        <i class="fas fa-project-diagram"></i>
+                    </div>
+                    <h3>Project Funding</h3>
+                    <div class="value">₦${summary.totalProject.toLocaleString()}</div>
+                    <div class="sub-value">Ministry Projects</div>
+                </div>
+                
+                <div class="kpi-card donors">
+                    <div class="kpi-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h3>Donors</h3>
+                    <div class="value">${donorCount}</div>
+                    <div class="sub-value">Avg Gift: ₦${avgGift}</div>
+                </div>
+            </div>
+            
+            <div class="recipients-table">
+                <div class="table-header">
+                    <h2><i class="fas fa-list"></i> Recipient Breakdown</h2>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Recipient</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${Object.values(summary.records).map(r => `
+                            <tr>
+                                <td>
+                                    <div class="recipient-name">
+                                        <div class="recipient-icon ${r.label.includes('Staff') ? 'staff-icon' : 'project-icon'}">
+                                            <i class="fas ${r.label.includes('Staff') ? 'fa-user' : 'fa-project-diagram'}"></i>
+                                        </div>
+                                        <div>${r.label}</div>
+                                    </div>
+                                </td>
+                                <td class="amount">₦${r.total.toLocaleString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="footer">
+                <p>Harvest Call Africa • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            </div>
+        </div>
+        
+        <script>
+            // Add loading indicator during navigation
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    // Show loading indicator
+                    document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><div class="logo" style="animation: spin 1s linear infinite;"><i class="fas fa-spinner"></i></div></div>';
+                    // Add spinner animation
+                    document.head.innerHTML += '<style>@keyframes spin {100% {transform: rotate(360deg);}}</style>';
+                });
+            });
+        </script>
+    </body>
+    </html>
     `;
 
-    for (const r of Object.values(summary.records)) {
-      html += `
-        <tr>
-          <td style="padding:10px; border:1px solid #ccc;">${r.label}</td>
-          <td style="padding:10px; border:1px solid #ccc;">₦${r.total.toLocaleString()}</td>
-        </tr>
-      `;
-    }
-
-    html += `</tbody></table>`;
-
-    res.send(`
-      <html>
-        <head><title>Donation Summary – ${title}</title></head>
-        <body style="font-family: Arial, sans-serif; padding: 30px; background: #f8f9fa;">
-          ${html}
-        </body>
-      </html>
-    `);
+    res.send(html);
   } catch (err) {
     console.error('❌ Summary error:', err.message);
-    res.status(500).send('Failed to load summary.');
+    res.status(500).send(`
+      <div style="font-family: Arial; padding: 30px; text-align: center;">
+        <h2 style="color: #d32f2f;">Error Loading Summary</h2>
+        <p>${err.message}</p>
+        <a href="/admin/summary" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #003366; color: white; text-decoration: none; border-radius: 4px;">
+          Try Again
+        </a>
+      </div>
+    `);
   }
 });
 
