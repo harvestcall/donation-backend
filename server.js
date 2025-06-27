@@ -1,6 +1,11 @@
 // Load environment variables
 require('dotenv').config();
 
+const db = require('./db');
+console.log("🛠 Using DB Connection:", db.client.config.connection);
+console.log("🌍 Running in environment:", process.env.NODE_ENV);
+
+
 // Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
   console.log(`🔍 Looking up ${type} ID: ${id}`);
