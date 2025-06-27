@@ -835,7 +835,15 @@ app.get('/staff-dashboard', async (req, res) => {
     const monthMap = {};
 
     for (const d of donations) {
-      const metadata = JSON.parse(d.metadata || '{}');
+      let metadata = {};
+
+      try {
+        metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+      } catch (err) {
+        console.error('❌ Bad metadata:', d.metadata);
+        continue;
+      }
+
       if (metadata.staffId !== String(staffId)) continue;
 
       const date = new Date(d.created_at || d.timestamp || Date.now());
@@ -919,6 +927,7 @@ app.get('/staff-dashboard', async (req, res) => {
     res.status(500).send('Something went wrong.');
   }
 });
+
 
 // Start server
 app.listen(PORT, () => {
