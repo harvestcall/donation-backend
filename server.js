@@ -58,7 +58,8 @@ async function initializeDatabase() {
     console.error('❌ Database initialization error:', err.message);
   }
 }
-
+  // 👇 Don't forget this!
+initializeDatabase();
 
 // Import required modules
 const express = require('express');
