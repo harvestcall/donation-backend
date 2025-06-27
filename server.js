@@ -1238,111 +1238,575 @@ app.get('/admin/summary', async (req, res) => {
 app.get('/staff-dashboard', async (req, res) => {
   try {
     const staffId = req.query.staffId;
+    const monthParam = req.query.month; // e.g., "2025-06"
 
     if (!staffId) {
       return res.status(400).send('Missing staffId');
     }
 
-    const donations = await db('donations').orderBy('created_at', 'desc');
     const staff = await db('staff').where('id', parseInt(staffId)).first();
+    if (!staff) return res.status(404).send('Staff not found');
 
-    if (!staff) {
-      return res.status(404).send('Staff not found');
-    }
+    // Determine current month or use query
+    const today = new Date();
+    const current = monthParam
+      ? new Date(monthParam + '-01')
+      : new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const monthMap = {};
+    const monthKey = current.toLocaleString('default', { year: 'numeric', month: 'long' });
+    const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
+    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
 
-    for (const d of donations) {
-      let metadata = {};
+    const donations = await db('donations')
+      .whereBetween('created_at', [monthStart.toISOString(), monthEnd.toISOString()])
+      .orderBy('created_at', 'desc');
 
+    const filtered = donations.filter(d => {
       try {
-        metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+        const metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+        return metadata.staffId === String(staffId);
       } catch (err) {
         console.error('❌ Bad metadata:', d.metadata);
-        continue;
+        return false;
       }
+    });
 
-      if (metadata.staffId !== String(staffId)) continue;
+    // Calculate totals
+    const totalAmount = filtered.reduce((sum, d) => sum + d.amount, 0) / 100;
+    const donorCount = new Set(filtered.map(d => d.email)).size;
+    const avgDonation = donorCount > 0 ? (totalAmount / donorCount).toFixed(2) : 0;
 
-      const date = new Date(d.created_at || d.timestamp || Date.now());
-      const monthKey = date.toLocaleString('default', { year: 'numeric', month: 'long' });
-
-      if (!monthMap[monthKey]) {
-        monthMap[monthKey] = {
-          total: 0,
-          entries: [],
-        };
-      }
-
-      const donor = metadata.donorName || '-';
-      const amount = d.amount / 100;
-      const ref = d.reference;
-      const donationType = metadata.donationType || '-';
-
-      monthMap[monthKey].total += amount;
-      monthMap[monthKey].entries.push({
-        donor,
-        amount,
-        donationType,
-        ref,
-        date: date.toLocaleDateString('en-US', {
-          year: 'numeric', month: 'short', day: 'numeric'
-        })
-      });
+    // Month navigation helpers
+    function prevMonth(date) {
+      const d = new Date(date.getFullYear(), date.getMonth() - 1, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    let html = `<h1 style="color:#2E7D32;">💼 Support Report for ${staff.name}</h1>`;
+    function nextMonth(date) {
+      const d = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
 
-    for (const [month, data] of Object.entries(monthMap)) {
-      html += `
-        <div style="margin-bottom: 30px;">
-          <h2>${month}</h2>
-          <p><strong>Total:</strong> ₦${data.total.toLocaleString()}</p>
-          <table style="width:100%; border-collapse: collapse;">
-            <thead>
-              <tr style="background:#f0f0f0;">
-                <th style="border:1px solid #ccc; padding:8px;">Donor</th>
-                <th style="border:1px solid #ccc; padding:8px;">Amount</th>
-                <th style="border:1px solid #ccc; padding:8px;">Type</th>
-                <th style="border:1px solid #ccc; padding:8px;">Reference</th>
-                <th style="border:1px solid #ccc; padding:8px;">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-      `;
-
-      for (const entry of data.entries) {
-        html += `
-          <tr>
-            <td style="border:1px solid #ccc; padding:8px;">${entry.donor}</td>
-            <td style="border:1px solid #ccc; padding:8px;">₦${entry.amount.toLocaleString()}</td>
-            <td style="border:1px solid #ccc; padding:8px;">${entry.donationType}</td>
-            <td style="border:1px solid #ccc; padding:8px;">${entry.ref}</td>
-            <td style="border:1px solid #ccc; padding:8px;">${entry.date}</td>
-          </tr>
-        `;
-      }
-
-      html += `
-            </tbody>
-          </table>
+    // Generate beautiful HTML dashboard
+    const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${staff.name} - Staff Dashboard</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <style>
+            :root {
+                --primary: #003366;
+                --secondary: #2E7D32;
+                --accent: #E67E22;
+                --light-bg: #f8f9fa;
+                --card-bg: #ffffff;
+                --text: #333333;
+                --text-light: #6c757d;
+                --border: #e0e0e0;
+                --success: #28a745;
+                --info: #17a2b8;
+                --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+            
+            body {
+                background-color: var(--light-bg);
+                color: var(--text);
+                line-height: 1.6;
+                padding: 20px;
+            }
+            
+            .dashboard-container {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 1px solid var(--border);
+            }
+            
+            .staff-header {
+                display: flex;
+                align-items: center;
+                gap: 20px;
+            }
+            
+            .staff-avatar {
+                width: 80px;
+                height: 80px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, var(--primary), var(--secondary));
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 36px;
+                font-weight: 600;
+            }
+            
+            .staff-info h1 {
+                color: var(--primary);
+                font-size: 28px;
+                margin-bottom: 5px;
+            }
+            
+            .staff-info p {
+                color: var(--text-light);
+                font-size: 16px;
+            }
+            
+            .controls {
+                display: flex;
+                gap: 15px;
+            }
+            
+            .btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 15px;
+                background: var(--primary);
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+                font-weight: 500;
+                transition: all 0.3s;
+            }
+            
+            .btn:hover {
+                background: #002244;
+                transform: translateY(-2px);
+                box-shadow: var(--shadow);
+            }
+            
+            .month-nav {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                background: var(--card-bg);
+                border-radius: 10px;
+                padding: 15px 20px;
+                box-shadow: var(--shadow);
+                margin-bottom: 30px;
+            }
+            
+            .nav-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: var(--light-bg);
+                color: var(--primary);
+                border: none;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                font-size: 18px;
+                text-decoration: none;
+            }
+            
+            .nav-btn:hover {
+                background: var(--primary);
+                color: white;
+                transform: translateY(-2px);
+            }
+            
+            .current-month {
+                font-size: 24px;
+                font-weight: 600;
+                color: var(--primary);
+                flex-grow: 1;
+                text-align: center;
+            }
+            
+            .kpi-cards {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 20px;
+                margin-bottom: 30px;
+            }
+            
+            .kpi-card {
+                background: var(--card-bg);
+                border-radius: 15px;
+                padding: 25px;
+                box-shadow: var(--shadow);
+                text-align: center;
+                transition: transform 0.3s ease;
+            }
+            
+            .kpi-card:hover {
+                transform: translateY(-5px);
+            }
+            
+            .kpi-icon {
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 15px;
+                font-size: 24px;
+            }
+            
+            .total .kpi-icon {
+                background: rgba(40, 167, 69, 0.15);
+                color: var(--success);
+            }
+            
+            .donations-count .kpi-icon {
+                background: rgba(231, 126, 34, 0.15);
+                color: var(--accent);
+            }
+            
+            .donors .kpi-icon {
+                background: rgba(23, 162, 184, 0.15);
+                color: var(--info);
+            }
+            
+            .avg-gift .kpi-icon {
+                background: rgba(0, 51, 102, 0.15);
+                color: var(--primary);
+            }
+            
+            .kpi-card h3 {
+                font-size: 16px;
+                color: var(--text-light);
+                margin-bottom: 10px;
+            }
+            
+            .kpi-card .value {
+                font-size: 32px;
+                font-weight: 700;
+                margin-bottom: 5px;
+            }
+            
+            .kpi-card .sub-value {
+                font-size: 16px;
+                color: var(--text-light);
+            }
+            
+            .donations-table {
+                background: var(--card-bg);
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: var(--shadow);
+                margin-bottom: 30px;
+            }
+            
+            .table-header {
+                padding: 20px 25px;
+                border-bottom: 1px solid var(--border);
+            }
+            
+            .table-header h2 {
+                color: var(--primary);
+                font-size: 22px;
+                font-weight: 600;
+            }
+            
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            
+            thead {
+                background: #f8fafc;
+            }
+            
+            th {
+                padding: 15px 25px;
+                text-align: left;
+                color: var(--text-light);
+                font-weight: 600;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
+            tbody tr {
+                border-bottom: 1px solid var(--border);
+                transition: background 0.2s ease;
+            }
+            
+            tbody tr:last-child {
+                border-bottom: none;
+            }
+            
+            tbody tr:hover {
+                background: #f8fafc;
+            }
+            
+            td {
+                padding: 15px 25px;
+                font-size: 16px;
+            }
+            
+            .donor-name {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+            
+            .donor-icon {
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0, 51, 102, 0.1);
+                color: var(--primary);
+                font-size: 18px;
+            }
+            
+            .amount {
+                font-weight: 600;
+                color: var(--primary);
+            }
+            
+            .type {
+                font-size: 14px;
+                padding: 4px 10px;
+                border-radius: 20px;
+                background: #e8f5e9;
+                color: #2E7D32;
+                display: inline-block;
+            }
+            
+            .type.one-time {
+                background: #e3f2fd;
+                color: #1565c0;
+            }
+            
+            .reference {
+                font-family: monospace;
+                font-size: 14px;
+                color: var(--text-light);
+            }
+            
+            .no-donations {
+                text-align: center;
+                padding: 40px;
+                color: var(--text-light);
+            }
+            
+            .no-donations i {
+                font-size: 48px;
+                color: #e0e0e0;
+                margin-bottom: 20px;
+            }
+            
+            .no-donations h3 {
+                font-size: 24px;
+                margin-bottom: 10px;
+                color: var(--text);
+            }
+            
+            .no-donations p {
+                max-width: 500px;
+                margin: 0 auto;
+            }
+            
+            .footer {
+                text-align: center;
+                color: var(--text-light);
+                font-size: 14px;
+                padding: 20px;
+            }
+            
+            @media (max-width: 768px) {
+                .header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 20px;
+                }
+                
+                .staff-header {
+                    flex-direction: column;
+                    text-align: center;
+                    gap: 15px;
+                }
+                
+                .controls {
+                    width: 100%;
+                    justify-content: center;
+                }
+                
+                .month-nav {
+                    flex-wrap: wrap;
+                }
+                
+                .kpi-cards {
+                    grid-template-columns: 1fr;
+                }
+                
+                table {
+                    display: block;
+                    overflow-x: auto;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="dashboard-container">
+            <div class="header">
+                <div class="staff-header">
+                    <div class="staff-avatar">${staff.name.charAt(0)}</div>
+                    <div class="staff-info">
+                        <h1>${staff.name}</h1>
+                        <p>Missionary Support Dashboard</p>
+                    </div>
+                </div>
+                <div class="controls">
+                    <a href="/" class="btn">
+                        <i class="fas fa-home"></i> Main Dashboard
+                    </a>
+                </div>
+            </div>
+            
+            <div class="month-nav">
+                <a href="/staff-dashboard?staffId=${staffId}&month=${prevMonth(current)}" class="nav-btn">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+                <div class="current-month">${monthKey}</div>
+                <a href="/staff-dashboard?staffId=${staffId}&month=${nextMonth(current)}" class="nav-btn">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+            </div>
+            
+            <div class="kpi-cards">
+                <div class="kpi-card total">
+                    <div class="kpi-icon">
+                        <i class="fas fa-donate"></i>
+                    </div>
+                    <h3>Total Support</h3>
+                    <div class="value">₦${totalAmount.toLocaleString()}</div>
+                    <div class="sub-value">Amount Raised</div>
+                </div>
+                
+                <div class="kpi-card donations-count">
+                    <div class="kpi-icon">
+                        <i class="fas fa-hand-holding-heart"></i>
+                    </div>
+                    <h3>Donations</h3>
+                    <div class="value">${filtered.length}</div>
+                    <div class="sub-value">Received This Month</div>
+                </div>
+                
+                <div class="kpi-card donors">
+                    <div class="kpi-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h3>Supporters</h3>
+                    <div class="value">${donorCount}</div>
+                    <div class="sub-value">Individual Donors</div>
+                </div>
+                
+                <div class="kpi-card avg-gift">
+                    <div class="kpi-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3>Average Gift</h3>
+                    <div class="value">₦${avgDonation}</div>
+                    <div class="sub-value">Per Supporter</div>
+                </div>
+            </div>
+            
+            <div class="donations-table">
+                <div class="table-header">
+                    <h2><i class="fas fa-list"></i> Donation Details</h2>
+                </div>
+                
+                ${filtered.length === 0 ? `
+                    <div class="no-donations">
+                        <i class="fas fa-inbox"></i>
+                        <h3>No Donations This Month</h3>
+                        <p>Your supporters haven't made any contributions for ${monthKey} yet. Share your ministry story to encourage giving!</p>
+                    </div>
+                ` : `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Supporter</th>
+                                <th>Amount</th>
+                                <th>Type</th>
+                                <th>Reference</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filtered.map(d => {
+                                const metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+                                const donationDate = new Date(d.created_at);
+                                return `
+                                <tr>
+                                    <td>
+                                        <div class="donor-name">
+                                            <div class="donor-icon">
+                                                <i class="fas fa-user"></i>
+                                            </div>
+                                            <div>${metadata.donorName || 'Anonymous Supporter'}</div>
+                                        </div>
+                                    </td>
+                                    <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
+                                    <td><span class="type ${metadata.donationType === 'recurring' ? '' : 'one-time'}">${metadata.donationType || 'one-time'}</span></td>
+                                    <td class="reference">${d.reference}</td>
+                                    <td>${donationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                                </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `}
+            </div>
+            
+            <div class="footer">
+                <p>Harvest Call Africa • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            </div>
         </div>
-      `;
-    }
+        
+        <script>
+            // Add loading indicator during navigation
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    // Show loading indicator
+                    document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><div style="animation: spin 1s linear infinite; width: 60px; height: 60px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center;"><i class="fas fa-spinner" style="font-size: 30px; color: #003366;"></i></div><style>@keyframes spin {100% {transform: rotate(360deg);}}</style></div>';
+                });
+            });
+        </script>
+    </body>
+    </html>
+    `;
 
-    res.send(`
-      <html>
-        <head>
-          <title>${staff.name} – Dashboard</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; padding: 30px; background: #f8f9fa;">
-          ${html}
-        </body>
-      </html>
-    `);
+    res.send(html);
   } catch (err) {
     console.error('❌ Staff dashboard error:', err.message);
-    res.status(500).send('Something went wrong.');
+    res.status(500).send(`
+      <div style="font-family: Arial; padding: 30px; text-align: center;">
+        <h2 style="color: #d32f2f;">Error Loading Dashboard</h2>
+        <p>${err.message}</p>
+        <a href="/staff-dashboard?staffId=${staffId}" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #003366; color: white; text-decoration: none; border-radius: 4px;">
+          Try Again
+        </a>
+      </div>
+    `);
   }
 });
 
