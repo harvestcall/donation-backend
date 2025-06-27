@@ -1,6 +1,30 @@
 // Load environment variables
 require('dotenv').config();
 
+// Basic Auth Middleware
+const requireAuth = (req, res, next) => {
+  const auth = req.headers.authorization;
+
+  if (!auth || !auth.startsWith('Basic ')) {
+    res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
+    return res.status(401).send('Authentication required.');
+  }
+
+  const base64Credentials = auth.split(' ')[1];
+  const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+  const [username, password] = credentials.split(':');
+
+  if (
+    username === process.env.DASHBOARD_USER &&
+    password === process.env.DASHBOARD_PASS
+  ) {
+    return next(); // authenticated!
+  }
+
+  res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
+  return res.status(401).send('Access denied');
+};
+
 
 // Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
@@ -698,7 +722,7 @@ app.get('/projects', async (req, res) => {
 });
 
 // Admin Summary Dashboard
-app.get('/admin/summary', async (req, res) => {
+app.get('/admin/summary', requireAuth, async (req, res) => {
   try {
     const donations = await db('donations').orderBy('created_at', 'desc');
 
@@ -1235,7 +1259,7 @@ app.get('/admin/summary', async (req, res) => {
 
 
 // Staff-Specific Dashboard
-app.get('/staff-dashboard', async (req, res) => {
+app.get('/staff-dashboard', requireAuth, async (req, res) => {
   try {
     const staffId = req.query.staffId;
     const monthParam = req.query.month; // e.g., "2025-06"
@@ -1811,7 +1835,7 @@ app.get('/staff-dashboard', async (req, res) => {
 });
 
 // Project-Specific Dashboard
-app.get('/project-dashboard', async (req, res) => {
+app.get('/project-dashboard', requireAuth, async (req, res) => {
   try {
     const projectId = req.query.projectId;
     const monthParam = req.query.month;
