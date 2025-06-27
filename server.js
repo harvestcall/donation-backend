@@ -3,17 +3,28 @@ require('dotenv').config();
 
 // Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
-  // Add extra safety check for numbers
-  if (!id || isNaN(id)) {
-    console.log(`Invalid ID: ${id} for ${type}`);
+  // Convert to number if it's a string
+  const numericId = typeof id === 'string' ? parseInt(id) : id;
+  
+  console.log(`🔍 Looking up ${type} ID: ${numericId} (Original: ${id})`);
+  
+  if (!numericId || isNaN(numericId)) {
+    console.log(`❌ Invalid ID: ${id}`);
     return null;
   }
 
   try {
-    const result = await db(type).where('id', id).first();
-    return result ? result.name : null;
+    const result = await db(type).where('id', numericId).first();
+    
+    if (result) {
+      console.log(`✅ Found ${type}: ${result.name}`);
+      return result.name;
+    } else {
+      console.log(`❌ No ${type} found with ID: ${numericId}`);
+      return null;
+    }
   } catch (err) {
-    console.error(`❌ Error fetching ${type} name:`, err.message);
+    console.error(`❌ Database error:`, err);
     return null;
   }
 }
@@ -105,10 +116,12 @@ app.post('/webhook', async (req, res) => {
 
       // Check if we have staffId or projectId
       if (paymentData.metadata.staffId && paymentData.metadata.staffId.trim() !== '') {
-        const staffName = await getDisplayName('staff', parseInt(paymentData.metadata.staffId), db);
-        if (staffName) {
-          purposeText = `Staff Support -- ${staffName}`;
-        }
+  const staffName = await getDisplayName('staff', paymentData.metadata.staffId, db);
+  if (staffName) {
+    purposeText = `Staff Support -- ${staffName}`;
+  }
+} 
+// Keep projectId handling the same
       } else if (paymentData.metadata.projectId && paymentData.metadata.projectId.trim() !== '') {
         const projectName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
         if (projectName) {
