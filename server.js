@@ -706,52 +706,62 @@ app.get('/admin/summary', async (req, res) => {
     const monthMap = {};
 
     for (const d of donations) {
-      const metadata = JSON.parse(d.metadata || '{}');
-      const donorName = metadata.donorName || '-';
-      const staffId = metadata.staffId;
-      const projectId = metadata.projectId;
+  let metadata = {};
 
-      const date = new Date(d.created_at || d.timestamp || Date.now());
-      const monthKey = date.toLocaleString('default', { year: 'numeric', month: 'long' });
+  // SAFELY parse metadata
+  try {
+    metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+  } catch (err) {
+    console.error('❌ Bad metadata:', d.metadata);
+    continue; // skip this record if metadata is invalid
+  }
 
-      if (!monthMap[monthKey]) {
-        monthMap[monthKey] = {
-          total: 0,
-          totalStaff: 0,
-          totalProject: 0,
-          donors: new Set(),
-          records: {},
-        };
-      }
+  const donorName = metadata.donorName || '-';
+  const staffId = metadata.staffId;
+  const projectId = metadata.projectId;
 
-      const currencyAmount = d.amount / 100;
-      monthMap[monthKey].total += currencyAmount;
-      monthMap[monthKey].donors.add(d.email);
+  const date = new Date(d.created_at || d.timestamp || Date.now());
+  const monthKey = date.toLocaleString('default', { year: 'numeric', month: 'long' });
 
-      let key = null;
-      let label = '';
-      if (staffId) {
-        const staff = await db('staff').where('id', parseInt(staffId)).first();
-        key = `staff-${staffId}`;
-        label = `Staff – ${staff?.name || 'Unknown Staff'}`;
-        monthMap[monthKey].totalStaff += currencyAmount;
-      } else if (projectId) {
-        const project = await db('projects').where('id', parseInt(projectId)).first();
-        key = `project-${projectId}`;
-        label = `Project – ${project?.name || 'Unknown Project'}`;
-        monthMap[monthKey].totalProject += currencyAmount;
-      }
+  if (!monthMap[monthKey]) {
+    monthMap[monthKey] = {
+      total: 0,
+      totalStaff: 0,
+      totalProject: 0,
+      donors: new Set(),
+      records: {},
+    };
+  }
 
-      if (key) {
-        if (!monthMap[monthKey].records[key]) {
-          monthMap[monthKey].records[key] = {
-            label,
-            total: 0,
-          };
-        }
-        monthMap[monthKey].records[key].total += currencyAmount;
-      }
+  const currencyAmount = d.amount / 100;
+  monthMap[monthKey].total += currencyAmount;
+  monthMap[monthKey].donors.add(d.email);
+
+  let key = null;
+  let label = '';
+  if (staffId) {
+    const staff = await db('staff').where('id', parseInt(staffId)).first();
+    key = `staff-${staffId}`;
+    label = `Staff – ${staff?.name || 'Unknown Staff'}`;
+    monthMap[monthKey].totalStaff += currencyAmount;
+  } else if (projectId) {
+    const project = await db('projects').where('id', parseInt(projectId)).first();
+    key = `project-${projectId}`;
+    label = `Project – ${project?.name || 'Unknown Project'}`;
+    monthMap[monthKey].totalProject += currencyAmount;
+  }
+
+  if (key) {
+    if (!monthMap[monthKey].records[key]) {
+      monthMap[monthKey].records[key] = {
+        label,
+        total: 0,
+      };
     }
+    monthMap[monthKey].records[key].total += currencyAmount;
+  }
+}
+
 
     // Build HTML
     let content = `<h1 style="color:#003366;">📊 Monthly Donation Summary</h1>`;
