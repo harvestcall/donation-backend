@@ -2379,7 +2379,7 @@ app.get('/project-dashboard', async (req, res) => {
             </div>
             
             <div class="footer">
-                <p>Harvest Call Africa • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
         </div>
         
