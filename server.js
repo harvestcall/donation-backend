@@ -1257,44 +1257,79 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
   }
 });
 
-// Admin Route to Create Staff Accounts
-const bcrypt = require('bcrypt');
+// Combined Staff + Account Creation Page
+app.get('/admin/add-staff-account', requireAuth, async (req, res) => {
+  try {
+    const form = `
+      <html>
+        <head>
+          <title>Add Staff Account</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 30px; background: #f5f5f5; }
+            form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+            label { display: block; margin-bottom: 5px; font-weight: bold; }
+            input { width: 100%; padding: 8px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; }
+            button { background: #003366; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
+            button:hover { background: #002244; }
+          </style>
+        </head>
+        <body>
+          <h2>Add Staff + Account</h2>
+          <form method="POST" action="/admin/add-staff-account">
+            <label>Name</label>
+            <input type="text" name="name" required />
 
-// Show form to create a staff account
-app.get('/admin/create-account', requireAuth, async (req, res) => {
-  const staffList = await db('staff').select('id', 'name');
-  const form = `
-    <h1>Create Staff Account</h1>
-    <form method="POST" action="/admin/create-account">
-      <label>Email:</label><br>
-      <input type="email" name="email" required><br><br>
-      <label>Password:</label><br>
-      <input type="password" name="password" required><br><br>
-      <label>Select Staff:</label><br>
-      <select name="staff_id" required>
-        ${staffList.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-      </select><br><br>
-      <button type="submit">Create Account</button>
-    </form>
-  `;
-  res.send(form);
+            <label>Email</label>
+            <input type="email" name="email" required />
+
+            <label>Password</label>
+            <input type="password" name="password" required />
+
+            <button type="submit">Create Account</button>
+          </form>
+        </body>
+      </html>
+    `;
+    res.send(form);
+  } catch (err) {
+    console.error('❌ Admin form error:', err.message);
+    res.status(500).send('Error loading form.');
+  }
 });
 
-// Handle account creation
-app.post('/admin/create-account', requireAuth, express.urlencoded({ extended: true }), async (req, res) => {
-  const { email, password, staff_id } = req.body;
+// Handle POST request to create staff + login
+app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
   try {
-    const hash = await bcrypt.hash(password, 10);
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).send('Missing required fields.');
+    }
+
+    const [staff] = await db('staff')
+      .insert({ name, email, active: true }, ['id']);
+
+    const password_hash = await bcrypt.hash(password, 10);
+
     await db('staff_accounts').insert({
       email,
-      password_hash: hash,
-      staff_id,
+      password_hash,
+      staff_id: staff.id,
       must_change_password: true,
+      created_at: new Date(),
+      updated_at: new Date()
     });
-    res.send(`<p>✅ Staff account created successfully for ${email}.</p><a href="/admin/create-account">Back</a>`);
+
+    res.send(`
+      <div style="font-family: Arial; padding: 30px;">
+        <h2 style="color: #2E7D32;">✅ Staff Account Created</h2>
+        <p>${name} with login <strong>${email}</strong> has been added successfully.</p>
+        <a href="/admin/add-staff-account" style="display:inline-block;margin-top:20px;background:#003366;color:white;padding:10px 20px;text-decoration:none;border-radius:4px;">Add Another</a>
+      </div>
+    `);
   } catch (err) {
-    console.error('❌ Account creation error:', err.message);
-    res.status(500).send(`<p>Error: ${err.message}</p><a href="/admin/create-account">Try again</a>`);
+    console.error('❌ Add staff account error:', err.message);
+    res.status(500).send('Error creating staff account.');
   }
 });
 
