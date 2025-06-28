@@ -9,7 +9,6 @@ const requireAuth = (req, res, next) => {
     res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
     return res.status(401).send('Authentication required.');
   }
-
   const base64Credentials = auth.split(' ')[1];
   const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
   const [username, password] = credentials.split(':');
@@ -1727,13 +1726,24 @@ app.get('/login', (req, res) => {
 });
 
 const session = require('express-session');
-const bcrypt = require('bcryptjs');
+const pgSession = require('connect-pg-simple')(session);
+const bcrypt = require('bcryptjs'); // keep this here, no need to move
 
 app.use(session({
-  secret: 'superSecretSessionKey', // You can make this an env variable later
+  store: new pgSession({
+    pool: db.client.pool, // uses your existing PostgreSQL connection
+    tableName: 'session',
+  }),
+  secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    secure: process.env.NODE_ENV === 'production', // only HTTPS in production
+    sameSite: 'lax'
+  }
 }));
+
 
 // Login Handler
 app.post('/login', async (req, res) => {
