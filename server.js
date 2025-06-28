@@ -1814,9 +1814,9 @@ app.get('/change-password', async (req, res) => {
   res.send(form);
 });
 
-console.log('SESSION DEBUG:', req.session);
 
 app.post('/change-password', async (req, res) => {
+  console.log('SESSION DEBUG:', req.session);
   const { old_password, new_password, confirm_password } = req.body;
 
   if (!req.session || !req.session.staffId) {
