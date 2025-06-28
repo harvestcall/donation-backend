@@ -1765,8 +1765,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-const bcrypt = require('bcryptjs'); // Ensure bcryptjs is required at the top
-
 // Render change password form
 app.get('/change-password', async (req, res) => {
   const force = req.query.force === 'true';
