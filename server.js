@@ -24,6 +24,7 @@ const requireAuth = (req, res, next) => {
   res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
   return res.status(401).send('Access denied');
 };
+app.use(express.urlencoded({ extended: true }));
 
 
 // Helper: Fetch name of staff or project
