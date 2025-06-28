@@ -800,7 +800,7 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Donation Summary Dashboard - Harvest Call Africa</title>
+        <title>Donation Summary Dashboard - Harvest Call Ministries</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <style>
             :root {
@@ -1139,10 +1139,13 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
                     </div>
                 </div>
                 <div class="controls">
-                    <a href="/admin/donations" class="btn">
-                        <i class="fas fa-list"></i> View All Donations
-                    </a>
-                </div>
+  <a href="/admin/donations" class="btn">
+    <i class="fas fa-list"></i> View All Donations
+  </a>
+  <a href="/admin/add-staff-account" class="btn">
+    <i class="fas fa-user-plus"></i> Add Staff Account
+  </a>
+</div>
             </div>
             
             <div class="month-nav">
