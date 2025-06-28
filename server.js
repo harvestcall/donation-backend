@@ -95,7 +95,34 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const axios = require('axios');
 const sgMail = require('@sendgrid/mail');
+const { Pool } = require('pg');
 const app = express();
+const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
+const bcrypt = require('bcryptjs'); // keep this here, no need to move
+
+// ✅ Define pgPool BEFORE using it
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false } // important for Render!
+});
+
+// ✅ Use session middleware AFTER pgPool is defined
+app.use(session({
+  store: new pgSession({
+    pool: pgPool, // ✅ Now pgPool is properly defined above
+    tableName: 'session',
+  }),
+  secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  }
+}));
+
 app.use(express.urlencoded({ extended: true }));
 
 // Set up SendGrid
@@ -104,15 +131,6 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 // Middleware setup
 app.use(bodyParser.json());
 app.use(cors());
-
-const { Pool } = require('pg');
-
-// This pulls credentials from your existing db config
-const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // important for Render!
-});
-
 
 // Add this route above your payment initialization endpoint
 app.get('/debug/staff', async (req, res) => {
@@ -135,25 +153,6 @@ app.get('/debug/donations', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
-const bcrypt = require('bcryptjs'); // keep this here, no need to move
-
-app.use(session({
-  store: new pgSession({
-    pool: pgPool, // uses your existing PostgreSQL connection
-    tableName: 'session',
-  }),
-  secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    secure: process.env.NODE_ENV === 'production', // only HTTPS in production
-    sameSite: 'lax'
-  }
-}));
 
 // Payment initialization endpoint
 app.post('/initialize-payment', async (req, res) => {
