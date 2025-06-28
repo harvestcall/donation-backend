@@ -1831,7 +1831,11 @@ app.post('/change-password', async (req, res) => {
       updated_at: new Date()
     });
 
-  res.redirect(`/staff-dashboard?staffId=${req.session.staffId}`);
+  // ✅ Re-authenticate
+  req.session.accountId = account.id;
+  req.session.staffId = account.staff_id;
+
+  res.redirect(`/staff-dashboard?staffId=${account.staff_id}`);
 });
 
 
