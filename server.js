@@ -1592,6 +1592,90 @@ app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
   }
 });
 
+// Show assign projects form
+app.get('/admin/assign-projects', requireAuth, async (req, res) => {
+  try {
+    const staff = await db('staff').where({ active: true }).orderBy('name');
+    const projects = await db('projects').where({ active: true }).orderBy('name');
+
+    const html = `
+    <html>
+      <head>
+        <title>Assign Projects to Staff</title>
+        <style>
+          body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 30px; }
+          h2 { text-align: center; margin-bottom: 20px; }
+          form { background: white; padding: 20px; max-width: 600px; margin: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+          label, select, input[type=submit] { display: block; margin-bottom: 15px; width: 100%; }
+          select, input[type=submit] { padding: 10px; border-radius: 5px; border: 1px solid #ccc; }
+          input[type=checkbox] { margin-right: 10px; }
+          .project-item { margin-bottom: 10px; }
+          .btn { background: #2E7D32; color: white; border: none; cursor: pointer; }
+          .btn:hover { background: #256429; }
+          a { display: block; text-align: center; margin-top: 20px; color: #003366; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <h2>📌 Assign Projects to Staff</h2>
+        <form method="POST" action="/admin/assign-projects">
+          <label for="staffId">Select Staff</label>
+          <select name="staffId" required>
+            <option value="">-- Choose Staff --</option>
+            ${staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+          </select>
+
+          <label>Choose Project(s)</label>
+          ${projects.map(p => `
+            <div class="project-item">
+              <input type="checkbox" name="projectIds" value="${p.id}" id="project-${p.id}" />
+              <label for="project-${p.id}">${p.name}</label>
+            </div>
+          `).join('')}
+
+          <input class="btn" type="submit" value="Assign Projects">
+        </form>
+
+        <a href="/admin/summary">← Back to Admin Dashboard</a>
+      </body>
+    </html>
+    `;
+    res.send(html);
+  } catch (err) {
+    console.error('❌ Assign project form error:', err.message);
+    res.status(500).send('Failed to load project assignment form.');
+  }
+});
+
+// Handle project assignment
+app.post('/admin/assign-projects', requireAuth, async (req, res) => {
+  const staffId = req.body.staffId;
+  const selectedProjects = Array.isArray(req.body.projectIds)
+    ? req.body.projectIds
+    : [req.body.projectIds]; // Handles single or multiple
+
+  try {
+    // Remove old assignments
+    await db('staff_projects').where({ staff_id: staffId }).del();
+
+    // Add new ones
+    const now = new Date();
+    const assignments = selectedProjects.map(pid => ({
+      staff_id: staffId,
+      project_id: pid,
+      created_at: now
+    }));
+
+    if (assignments.length) {
+      await db('staff_projects').insert(assignments);
+    }
+
+    res.redirect('/admin/projects'); // or confirmation message
+  } catch (err) {
+    console.error('❌ Assign project error:', err.message);
+    res.status(500).send('Failed to assign projects.');
+  }
+});
+
 
 // Staff-Specific Dashboard
 app.get('/staff-dashboard', requireAuth, async (req, res) => {
