@@ -105,6 +105,15 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 app.use(bodyParser.json());
 app.use(cors());
 
+const { Pool } = require('pg');
+
+// This pulls credentials from your existing db config
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false } // important for Render!
+});
+
+
 // Add this route above your payment initialization endpoint
 app.get('/debug/staff', async (req, res) => {
   try {
@@ -1731,7 +1740,7 @@ const bcrypt = require('bcryptjs'); // keep this here, no need to move
 
 app.use(session({
   store: new pgSession({
-    pool: db.client.pool, // uses your existing PostgreSQL connection
+    pool: pgPool, // uses your existing PostgreSQL connection
     tableName: 'session',
   }),
   secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
