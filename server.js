@@ -1699,6 +1699,72 @@ app.post('/admin/assign-projects', requireAuth, async (req, res) => {
   }
 });
 
+// Login Form
+app.get('/login', (req, res) => {
+  const html = `
+    <html>
+    <head>
+      <title>Staff Login</title>
+      <style>
+        body { font-family: Arial; background: #f0f0f0; padding: 40px; }
+        form { background: #fff; padding: 20px; max-width: 400px; margin: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        input { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background: #003366; color: white; padding: 10px; width: 100%; border: none; border-radius: 4px; }
+        h2 { text-align: center; margin-bottom: 20px; color: #003366; }
+      </style>
+    </head>
+    <body>
+      <form method="POST" action="/login">
+        <h2>Staff Login</h2>
+        <input type="email" name="email" placeholder="Email" required />
+        <input type="password" name="password" placeholder="Password" required />
+        <button type="submit">Login</button>
+      </form>
+    </body>
+    </html>
+  `;
+  res.send(html);
+});
+
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+
+app.use(session({
+  secret: 'superSecretSessionKey', // You can make this an env variable later
+  resave: false,
+  saveUninitialized: true
+}));
+
+// Login Handler
+app.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const account = await db('staff_accounts').where({ email }).first();
+
+    if (!account) {
+      return res.status(401).send('Invalid email or password.');
+    }
+
+    const isMatch = await bcrypt.compare(password, account.password_hash);
+    if (!isMatch) {
+      return res.status(401).send('Invalid email or password.');
+    }
+
+    // Save session
+    req.session.staffId = account.staff_id;
+    req.session.accountId = account.id;
+
+    if (account.must_change_password) {
+      return res.redirect('/change-password?force=true');
+    }
+
+    return res.redirect(`/staff-dashboard?staffId=${account.staff_id}`);
+  } catch (err) {
+    console.error('❌ Login error:', err.message);
+    res.status(500).send('Server error during login.');
+  }
+});
+
 
 // Staff-Specific Dashboard
 app.get('/staff-dashboard', requireAuth, async (req, res) => {

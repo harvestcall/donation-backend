@@ -1,0 +1,19 @@
+{
+    "sqltools.connections": [
+        {
+            "pgOptions": {
+                "ssl": {
+                    "rejectUnauthorized": false
+                }
+            },
+            "previewLimit": 50,
+            "server": "dpg-d1f146er433s73fofr10-a.oregon-postgres.render.com",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "database": "harvestcall_giving_db",
+            "username": "harvestcall_giving_db_user",
+            "name": "Render DB",
+            "password": "uzWs27MD3ilpn56DVcIqYrGFoJ2nJJsH"
+        }
+    ]
+}
