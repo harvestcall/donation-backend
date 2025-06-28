@@ -1257,6 +1257,47 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
   }
 });
 
+// Admin Route to Create Staff Accounts
+const bcrypt = require('bcrypt');
+
+// Show form to create a staff account
+app.get('/admin/create-account', requireAuth, async (req, res) => {
+  const staffList = await db('staff').select('id', 'name');
+  const form = `
+    <h1>Create Staff Account</h1>
+    <form method="POST" action="/admin/create-account">
+      <label>Email:</label><br>
+      <input type="email" name="email" required><br><br>
+      <label>Password:</label><br>
+      <input type="password" name="password" required><br><br>
+      <label>Select Staff:</label><br>
+      <select name="staff_id" required>
+        ${staffList.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+      </select><br><br>
+      <button type="submit">Create Account</button>
+    </form>
+  `;
+  res.send(form);
+});
+
+// Handle account creation
+app.post('/admin/create-account', requireAuth, express.urlencoded({ extended: true }), async (req, res) => {
+  const { email, password, staff_id } = req.body;
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    await db('staff_accounts').insert({
+      email,
+      password_hash: hash,
+      staff_id,
+      must_change_password: true,
+    });
+    res.send(`<p>✅ Staff account created successfully for ${email}.</p><a href="/admin/create-account">Back</a>`);
+  } catch (err) {
+    console.error('❌ Account creation error:', err.message);
+    res.status(500).send(`<p>Error: ${err.message}</p><a href="/admin/create-account">Try again</a>`);
+  }
+});
+
 
 // Staff-Specific Dashboard
 app.get('/staff-dashboard', requireAuth, async (req, res) => {
