@@ -1768,9 +1768,12 @@ app.post('/login', async (req, res) => {
       return res.status(401).send('Invalid email or password.');
     }
 
-    // Save session
+    // ✅ Save session
     req.session.staffId = account.staff_id;
     req.session.accountId = account.id;
+
+    // ✅ Log session after it's set
+    console.log('SESSION DEBUG:', req.session);
 
     if (account.must_change_password) {
       return res.redirect('/change-password?force=true');
@@ -1782,6 +1785,7 @@ app.post('/login', async (req, res) => {
     res.status(500).send('Server error during login.');
   }
 });
+
 
 // Render change password form
 app.get('/change-password', async (req, res) => {
