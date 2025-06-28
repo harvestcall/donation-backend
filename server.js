@@ -763,9 +763,13 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
 
       if (metadata.staffId) {
         const staff = await db('staff').where('id', parseInt(metadata.staffId)).first();
-        key = `staff-${metadata.staffId}`;
-        label = `Staff – ${staff?.name || 'Unknown Staff'}`;
-        summary.totalStaff += amount;
+        
+        // Only include active staff members
+        if (staff && staff.active !== false) {
+          key = `staff-${metadata.staffId}`;
+          label = `Staff – ${staff?.name || 'Unknown Staff'}`;
+          summary.totalStaff += amount;
+        }
       } else if (metadata.projectId) {
         const project = await db('projects').where('id', parseInt(metadata.projectId)).first();
         key = `project-${metadata.projectId}`;
@@ -793,14 +797,14 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
     const next = format(nextMonth);
     const title = current.toLocaleString('default', { year: 'numeric', month: 'long' });
 
-    // Generate beautiful HTML dashboard
+    // Generate beautiful HTML dashboard (unchanged)
     const html = `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Donation Summary Dashboard - Harvest Call Ministries</title>
+        <title>Donation Summary Dashboard - Harvest Call Africa</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <style>
             :root {
@@ -1135,17 +1139,14 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
                     </div>
                     <div class="title-container">
                         <h1>Donation Summary Dashboard</h1>
-                        <p>Harvest Call Ministries - Monthly Contributions Report</p>
+                        <p>Harvest Call Africa - Monthly Contributions Report</p>
                     </div>
                 </div>
                 <div class="controls">
-  <a href="/admin/donations" class="btn">
-    <i class="fas fa-list"></i> View All Donations
-  </a>
-  <a href="/admin/add-staff-account" class="btn">
-    <i class="fas fa-user-plus"></i> Add Staff Account
-  </a>
-</div>
+                    <a href="/admin/donations" class="btn">
+                        <i class="fas fa-list"></i> View All Donations
+                    </a>
+                </div>
             </div>
             
             <div class="month-nav">
@@ -1226,7 +1227,7 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
             </div>
             
             <div class="footer">
-                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p>Harvest Call Africa • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
         </div>
         
@@ -1259,6 +1260,261 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
     `);
   }
 });
+
+// View and manage staff accounts (/admin/staff)
+app.get('/admin/staff', requireAuth, async (req, res) => {
+  try {
+    const staffList = await db('staff').orderBy('name');
+
+    const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Manage Staff – Harvest Call Admin</title>
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          padding: 40px;
+          background: #f8f9fa;
+          color: #333;
+        }
+        h1 {
+          color: #003366;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 20px;
+        }
+        th, td {
+          padding: 12px;
+          border: 1px solid #ccc;
+        }
+        th {
+          background: #003366;
+          color: white;
+          text-align: left;
+        }
+        tr:nth-child(even) {
+          background-color: #f2f2f2;
+        }
+        .btn {
+          display: inline-block;
+          padding: 6px 12px;
+          background-color: #2E7D32;
+          color: white;
+          text-decoration: none;
+          border-radius: 4px;
+          font-size: 14px;
+        }
+        .inactive {
+          background-color: #888;
+        }
+        .top-link {
+          margin-bottom: 20px;
+          display: inline-block;
+        }
+      </style>
+    </head>
+    <body>
+      <h1><i class="fas fa-users"></i> Staff Management</h1>
+      <a class="top-link btn" href="/admin/add-staff-account">+ Add New Staff</a>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${staffList.map(s => `
+            <tr>
+              <td>${s.name}</td>
+              <td>${s.email}</td>
+              <td>${s.active ? 'Active' : 'Inactive'}</td>
+              <td>
+                <form method="POST" action="/admin/toggle-staff/${s.id}" style="display:inline;">
+                  <button class="btn ${s.active ? 'inactive' : ''}" type="submit">
+                    ${s.active ? 'Mark Inactive' : 'Reactivate'}
+                  </button>
+                </form>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
+  } catch (err) {
+    console.error('❌ Error loading staff list:', err.message);
+    res.status(500).send('Failed to load staff list');
+  }
+});
+
+// POST route to toggle staff active/inactive
+app.post('/admin/toggle-staff/:id', requireAuth, async (req, res) => {
+  try {
+    const staff = await db('staff').where('id', req.params.id).first();
+    if (!staff) return res.status(404).send('Staff not found');
+
+    await db('staff')
+      .where('id', req.params.id)
+      .update({
+        active: !staff.active,
+        updated_at: new Date().toISOString()
+      });
+
+    res.redirect('/admin/staff');
+  } catch (err) {
+    console.error('❌ Error toggling staff status:', err.message);
+    res.status(500).send('Failed to update staff status');
+  }
+});
+
+// View all projects
+app.get('/admin/projects', requireAuth, async (req, res) => {
+  try {
+    const projects = await db('projects').orderBy('created_at', 'desc');
+
+    const html = `
+    <html>
+      <head>
+        <title>Manage Projects</title>
+        <style>
+          body { font-family: Arial, sans-serif; background: #f8f9fa; padding: 30px; }
+          h2 { text-align: center; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+          th, td { padding: 12px 16px; border-bottom: 1px solid #ddd; text-align: left; }
+          th { background: #003366; color: white; }
+          tr:hover { background: #f1f1f1; }
+          .status { font-weight: bold; color: green; }
+          .inactive { color: red; }
+          .btn { padding: 6px 12px; font-size: 14px; background: #E67E22; color: white; border: none; border-radius: 4px; cursor: pointer; }
+          .btn:hover { background: #d35400; }
+          .top-links { text-align: center; margin-bottom: 20px; }
+          .top-links a { margin: 0 10px; text-decoration: none; color: #003366; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <h2>📁 Project Management</h2>
+        <div class="top-links">
+          <a href="/admin/summary">← Back to Dashboard</a>
+          <a href="/admin/add-project">+ Add New Project</a>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Project Name</th>
+              <th>Description</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${projects.map(p => `
+              <tr>
+                <td>${p.name}</td>
+                <td>${p.description || '-'}</td>
+                <td class="${p.active ? 'status' : 'inactive'}">${p.active ? 'Active' : 'Inactive'}</td>
+                <td>
+                  <form method="POST" action="/admin/toggle-project/${p.id}" style="display:inline;">
+                    <button class="btn" type="submit">${p.active ? 'Mark Inactive' : 'Reactivate'}</button>
+                  </form>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+    </html>
+    `;
+
+    res.send(html);
+  } catch (err) {
+    console.error('❌ Project list error:', err.message);
+    res.status(500).send('Could not load project list.');
+  }
+});
+
+// Toggle project active status
+app.post('/admin/toggle-project/:id', requireAuth, async (req, res) => {
+  const projectId = req.params.id;
+  try {
+    const project = await db('projects').where({ id: projectId }).first();
+    if (!project) return res.status(404).send('Project not found.');
+
+    await db('projects')
+      .where({ id: projectId })
+      .update({
+        active: !project.active,
+        updated_at: new Date()
+      });
+
+    res.redirect('/admin/projects');
+  } catch (err) {
+    console.error('❌ Toggle project error:', err.message);
+    res.status(500).send('Failed to update project.');
+  }
+});
+
+
+// GET: Show form to add a new project
+app.get('/admin/add-project', requireAuth, (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Add Project - Admin</title>
+        <style>
+          body { font-family: Arial, sans-serif; background: #f8f9fa; padding: 30px; }
+          form { background: white; padding: 20px; border-radius: 8px; max-width: 500px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+          input, textarea, button { width: 100%; padding: 10px; margin-top: 10px; font-size: 16px; }
+          button { background: #003366; color: white; border: none; cursor: pointer; margin-top: 20px; }
+          button:hover { background: #002244; }
+          .back-link { display: block; text-align: center; margin-top: 20px; text-decoration: none; color: #003366; }
+        </style>
+      </head>
+      <body>
+        <h2 style="text-align:center;">🛠 Add New Project</h2>
+        <form method="POST" action="/admin/add-project">
+          <input type="text" name="name" placeholder="Project Name" required />
+          <textarea name="description" placeholder="Project Description (optional)"></textarea>
+          <button type="submit">Add Project</button>
+        </form>
+        <a href="/admin/projects" class="back-link">← Back to Project List</a>
+      </body>
+    </html>
+  `);
+});
+
+// POST: Handle form submission
+app.post('/admin/add-project', requireAuth, async (req, res) => {
+  const { name, description } = req.body;
+
+  try {
+    await db('projects').insert({
+      name,
+      description,
+      active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+
+    res.redirect('/admin/projects');
+  } catch (err) {
+    console.error('❌ Error adding project:', err.message);
+    res.status(500).send('Failed to add project.');
+  }
+});
+
+
 
 // Combined Staff + Account Creation Page
 app.get('/admin/add-staff-account', requireAuth, async (req, res) => {
