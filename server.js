@@ -1515,46 +1515,48 @@ app.post('/admin/add-project', requireAuth, async (req, res) => {
 
 
 // Combined Staff + Account Creation Page
+// Show the form to add new staff + create account
 app.get('/admin/add-staff-account', requireAuth, async (req, res) => {
   try {
     const form = `
-      <html>
-        <head>
-          <title>Add Staff Account</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 30px; background: #f5f5f5; }
-            form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
-            label { display: block; margin-bottom: 5px; font-weight: bold; }
-            input { width: 100%; padding: 8px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; }
-            button { background: #003366; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
-            button:hover { background: #002244; }
-          </style>
-        </head>
-        <body>
-          <h2>Add Staff + Account</h2>
-          <form method="POST" action="/admin/add-staff-account">
-            <label>Name</label>
-            <input type="text" name="name" required />
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Add Staff Account</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 30px; background: #f5f5f5; }
+        form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 8px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background: #003366; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #002244; }
+      </style>
+    </head>
+    <body>
+      <h2 style="text-align:center;">Add New Staff + Login Account</h2>
+      <form method="POST" action="/admin/add-staff-account">
+        <label>Name</label>
+        <input type="text" name="name" required />
 
-            <label>Email</label>
-            <input type="email" name="email" required />
+        <label>Email</label>
+        <input type="email" name="email" required />
 
-            <label>Password</label>
-            <input type="password" name="password" required />
+        <label>Password</label>
+        <input type="password" name="password" required />
 
-            <button type="submit">Create Account</button>
-          </form>
-        </body>
-      </html>
+        <button type="submit">Create Account</button>
+      </form>
+    </body>
+    </html>
     `;
     res.send(form);
   } catch (err) {
-    console.error('❌ Admin form error:', err.message);
+    console.error('❌ Error loading form:', err.message);
     res.status(500).send('Error loading form.');
   }
 });
 
-// Handle POST request to create staff + login
+// Handle form submission to add staff + create login
 app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -1563,15 +1565,31 @@ app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
       return res.status(400).send('Missing required fields.');
     }
 
-    const [staff] = await db('staff')
-      .insert({ name, email, active: true }, ['id']);
+    // Check if email already exists
+    const existing = await db('staff').where({ email }).first();
+    if (existing) {
+      return res.status(400).send(`
+        <div style="font-family: Arial; padding: 30px;">
+          <h2 style="color: red;">Staff Already Exists</h2>
+          <p>A staff with email <strong>${email}</strong> already exists.</p>
+          <a href="/admin/add-staff-account" style="color: #003366;">Try Again</a>
+        </div>
+      `);
+    }
 
+    // Insert new staff
+    const insertedIds = await db('staff').insert({ name, email, active: true });
+    const staffId = insertedIds[0];
+
+    // Hash password
+    const bcrypt = require('bcryptjs');
     const password_hash = await bcrypt.hash(password, 10);
 
+    // Insert login credentials
     await db('staff_accounts').insert({
       email,
       password_hash,
-      staff_id: staff.id,
+      staff_id: staffId,
       must_change_password: true,
       created_at: new Date(),
       updated_at: new Date()
@@ -1586,9 +1604,16 @@ app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
     `);
   } catch (err) {
     console.error('❌ Add staff account error:', err.message);
-    res.status(500).send('Error creating staff account.');
+    res.status(500).send(`
+      <div style="font-family: Arial; padding: 30px;">
+        <h2 style="color: red;">Error Creating Staff Account</h2>
+        <p>${err.message}</p>
+        <a href="/admin/add-staff-account" style="color: #003366;">Try Again</a>
+      </div>
+    `);
   }
 });
+
 
 // Show assign projects form
 app.get('/admin/assign-projects', requireAuth, async (req, res) => {
