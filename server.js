@@ -1765,6 +1765,67 @@ app.post('/login', async (req, res) => {
   }
 });
 
+const bcrypt = require('bcryptjs'); // Ensure bcryptjs is required at the top
+
+// Render change password form
+app.get('/change-password', async (req, res) => {
+  const force = req.query.force === 'true';
+
+  const form = `
+    <html>
+      <head>
+        <title>Change Password</title>
+        <style>
+          body { font-family: Arial; padding: 30px; background: #f9f9f9; }
+          form { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          input, button { display: block; width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+          button { background: #003366; color: white; font-weight: bold; cursor: pointer; }
+          h2 { color: #003366; }
+        </style>
+      </head>
+      <body>
+        <h2>${force ? 'Please change your password before proceeding' : 'Change Password'}</h2>
+        <form method="POST" action="/change-password">
+          <input type="password" name="old_password" placeholder="Current Password" required />
+          <input type="password" name="new_password" placeholder="New Password" required />
+          <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
+          <button type="submit">Update Password</button>
+        </form>
+      </body>
+    </html>
+  `;
+  res.send(form);
+});
+
+app.post('/change-password', async (req, res) => {
+  const { old_password, new_password, confirm_password } = req.body;
+
+  if (!req.session || !req.session.staffId) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  const account = await db('staff_accounts').where('staff_id', req.session.staffId).first();
+  if (!account) return res.status(404).send('Account not found.');
+
+  const valid = await bcrypt.compare(old_password, account.password_hash);
+  if (!valid) return res.status(400).send('Current password is incorrect.');
+
+  if (new_password !== confirm_password) {
+    return res.status(400).send('New passwords do not match.');
+  }
+
+  const newHash = await bcrypt.hash(new_password, 10);
+  await db('staff_accounts')
+    .where('staff_id', req.session.staffId)
+    .update({
+      password_hash: newHash,
+      must_change_password: false,
+      updated_at: new Date()
+    });
+
+  res.redirect(`/staff-dashboard?staffId=${req.session.staffId}`);
+});
+
 
 // Staff-Specific Dashboard
 app.get('/staff-dashboard', requireAuth, async (req, res) => {
