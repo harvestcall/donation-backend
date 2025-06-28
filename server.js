@@ -100,6 +100,8 @@ const app = express();
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 const bcrypt = require('bcryptjs'); // keep this here, no need to move
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
 
 // ✅ Define pgPool BEFORE using it
 const pgPool = new Pool({
@@ -118,7 +120,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // for local or non-HTTPS
     sameSite: 'lax'
   }
 }));
