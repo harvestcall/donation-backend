@@ -136,6 +136,25 @@ app.get('/debug/donations', async (req, res) => {
   }
 });
 
+const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
+const bcrypt = require('bcryptjs'); // keep this here, no need to move
+
+app.use(session({
+  store: new pgSession({
+    pool: pgPool, // uses your existing PostgreSQL connection
+    tableName: 'session',
+  }),
+  secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    secure: process.env.NODE_ENV === 'production', // only HTTPS in production
+    sameSite: 'lax'
+  }
+}));
+
 // Payment initialization endpoint
 app.post('/initialize-payment', async (req, res) => {
   try {
@@ -1734,25 +1753,6 @@ app.get('/login', (req, res) => {
   res.send(html);
 });
 
-const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
-const bcrypt = require('bcryptjs'); // keep this here, no need to move
-
-app.use(session({
-  store: new pgSession({
-    pool: pgPool, // uses your existing PostgreSQL connection
-    tableName: 'session',
-  }),
-  secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    secure: process.env.NODE_ENV === 'production', // only HTTPS in production
-    sameSite: 'lax'
-  }
-}));
-
 
 // Login Handler
 app.post('/login', async (req, res) => {
@@ -1813,6 +1813,8 @@ app.get('/change-password', async (req, res) => {
   `;
   res.send(form);
 });
+
+console.log('SESSION DEBUG:', req.session);
 
 app.post('/change-password', async (req, res) => {
   const { old_password, new_password, confirm_password } = req.body;
