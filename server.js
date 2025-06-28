@@ -24,7 +24,6 @@ const requireAuth = (req, res, next) => {
   res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
   return res.status(401).send('Access denied');
 };
-app.use(express.urlencoded({ extended: true }));
 
 
 // Helper: Fetch name of staff or project
@@ -98,6 +97,7 @@ const cors = require('cors');
 const axios = require('axios');
 const sgMail = require('@sendgrid/mail');
 const app = express();
+app.use(express.urlencoded({ extended: true }));
 
 // Set up SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
