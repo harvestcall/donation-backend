@@ -763,8 +763,6 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
 
       if (metadata.staffId) {
         const staff = await db('staff').where('id', parseInt(metadata.staffId)).first();
-        
-        // Only include active staff members
         if (staff && staff.active !== false) {
           key = `staff-${metadata.staffId}`;
           label = `Staff – ${staff?.name || 'Unknown Staff'}`;
@@ -796,8 +794,7 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
     const prev = format(prevMonth);
     const next = format(nextMonth);
     const title = current.toLocaleString('default', { year: 'numeric', month: 'long' });
-
-    // Generate beautiful HTML dashboard (unchanged)
+// Generate beautiful HTML dashboard
     const html = `
     <!DOCTYPE html>
     <html lang="en">
@@ -1139,7 +1136,7 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
                     </div>
                     <div class="title-container">
                         <h1>Donation Summary Dashboard</h1>
-                        <p>Harvest Call Africa - Monthly Contributions Report</p>
+                        <p>Harvest Call Ministries - Monthly Contributions Report</p>
                     </div>
                 </div>
                 <div class="controls">
@@ -1227,7 +1224,7 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
             </div>
             
             <div class="footer">
-                <p>Harvest Call Africa • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
         </div>
         
