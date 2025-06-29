@@ -1,8 +1,13 @@
 // db.js
 const knex = require('knex');
-const config = require('./knexfile');
+require('dotenv').config(); // Load env vars early
 
-const environment = process.env.NODE_ENV || 'development';
-const db = knex(config[environment]);
+const db = knex({
+  client: 'pg',
+  connection: {
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // Needed for Render
+  }
+});
 
 module.exports = db;
