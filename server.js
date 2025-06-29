@@ -87,7 +87,7 @@ async function initializeDatabase() {
     console.error('❌ Database initialization error:', err.message);
   }
 }
-initializeDatabase();
+
 // 🧪 Temporary Tests for getDisplayName()
 
 getDisplayName('staff', 0, db).then(name => console.log('Staff 0:', name));
@@ -110,7 +110,11 @@ const { Pool } = require('pg');
 const app = express();
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
-const bcrypt = require('bcryptjs'); // keep this here, no need to move
+const bcrypt = require('bcryptjs');
+const BCRYPT_COST = parseInt(process.env.BCRYPT_COST || '12', 10);
+const formatCurrency = require('./utils/formatCurrency');
+const Joi = require('joi');
+const helmet = require('helmet');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
 
@@ -124,12 +128,15 @@ const pgPool = new Pool({
 app.set('trust proxy', 1);
 
 // ✅ Session middleware
+if (!process.env.SESSION_SECRET) {
+  throw new Error('❌ SESSION_SECRET is required but not set in the environment!');
+}
 app.use(session({
   store: new pgSession({
     pool: pgPool,
     tableName: 'session',
   }),
-  secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -141,17 +148,24 @@ app.use(session({
   }
 }));
 
-// ✅ Security headers (protect users & site)
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Content-Security-Policy', "default-src 'self'");
-  next();
-});
-
 
 app.use(express.urlencoded({ extended: true }));
+
+// Helment
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "style-src": ["'self'", "https://fonts.googleapis.com"],
+      "font-src": ["'self'", "https://fonts.gstatic.com"],
+      "script-src": ["'self'", "https://cdnjs.cloudflare.com"],
+      "img-src": ["'self'", "data:"],
+      "connect-src": ["'self'"]
+    }
+  }
+}));
+
 
 // Set up SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -160,33 +174,31 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 app.use(bodyParser.json());
 app.use(cors());
 
-// Add this route above your payment initialization endpoint
-app.get('/debug/staff', async (req, res) => {
-  try {
-    const staff = await db('staff').select('*');
-    console.log('Staff Records:', staff);
-    res.json(staff);
-  } catch (error) {
-    console.error('❌ Error fetching staff:', error);
-    res.status(500).json({ error: 'Failed to load staff' });
-  }
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/debug/staff', requireAuth, async (req, res, next) => {
+    try {
+      const all = await db('staff').select('*');
+      res.json(all);
+    } catch (err) {
+      next(new Error('Failed to fetch debug staff data'));
+    }
+  });
 
-// Debug: Get all donations
-app.get('/debug/donations', async (req, res) => {
-  try {
-    const donations = await db('donations').select('*');
-    res.json(donations);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  app.get('/debug/donations', requireAuth, async (req, res, next) => {
+    try {
+      const all = await db('donations').select('*');
+      res.json(all);
+    } catch (err) {
+      next(new Error('Failed to fetch debug donation data'));
+    }
+  });
+}
+
 
 // Payment initialization endpoint
-app.post('/initialize-payment', async (req, res) => {
+app.post('/initialize-payment', async (req, res, next) => {
   try {
     const { email, amount, currency, metadata } = req.body;
-
     const amountInKobo = amount * 100;
 
     const paymentData = {
@@ -194,7 +206,7 @@ app.post('/initialize-payment', async (req, res) => {
       amount: amountInKobo,
       currency,
       metadata,
-      callback_url: "https://yourfrontend.com/thank-you" // Replace with real page later
+      callback_url: `${process.env.FRONTEND_BASE_URL}/thank-you`
     };
 
     const response = await axios.post(
@@ -216,20 +228,31 @@ app.post('/initialize-payment', async (req, res) => {
 
   } catch (error) {
     console.error(error.response?.data || error.message);
-    res.status(500).json({ error: 'Payment initialization failed' });
+    next(new Error('Payment initialization failed'));
   }
 });
 
-
 // Webhook for payment verification
-app.post('/webhook', async (req, res) => {
+app.post('/webhook', async (req, res, next) => {
   try {
     const event = req.body;
 
     if (event.event === 'charge.success') {
       const paymentData = event.data;
+
+      if (!paymentData.amount || paymentData.amount <= 0) {
+  console.warn('❌ Invalid or zero donation amount:', paymentData.amount);
+  return res.status(400).send('Invalid donation amount');
+}
+      const { error, value: validMetadata } = metadataSchema.validate(paymentData.metadata || {});
+if (error) {
+  console.error('❌ Invalid metadata in webhook:', error.details);
+  return res.status(400).send('Invalid metadata');
+}
       console.log('✅ Verified Payment:', paymentData.reference);
-      console.log('🔎 Payment Metadata:', paymentData.metadata);
+      const { donorName, ...safeMetadata } = paymentData.metadata || {};
+      console.log('🔎 Payment Metadata:', safeMetadata);
+
 
       // Save to database
       await db('donations').insert({
@@ -246,31 +269,61 @@ app.post('/webhook', async (req, res) => {
       let purposeText = 'General Donation';
 
       // Check if we have staffId or projectId
-      if (paymentData.metadata.staffId && paymentData.metadata.staffId.trim() !== '') {
-  const staffName = await getDisplayName('staff', paymentData.metadata.staffId, db);
-  if (staffName) {
-    purposeText = `Staff Support -- ${staffName}`;
+      // 🛡️ Defensive parsing for metadata IDs
+let staffId = null;
+let projectId = null;
+
+if (validMetadata) {
+  const rawStaffId = validMetadata.staffId;
+  const rawProjectId = validMetadata.projectId;
+
+  if (typeof rawStaffId === 'string' && /^\d+$/.test(rawStaffId.trim())) {
+    staffId = parseInt(rawStaffId.trim(), 10);
   }
 
-// Keep projectId handling the same
-      } else if (paymentData.metadata.projectId && paymentData.metadata.projectId.trim() !== '') {
-        const projectName = await getDisplayName('projects', parseInt(paymentData.metadata.projectId), db);
-        if (projectName) {
-          purposeText = `Project Support -- ${projectName}`;
-        }
-      }
+  if (typeof rawProjectId === 'string' && /^\d+$/.test(rawProjectId.trim())) {
+    projectId = parseInt(rawProjectId.trim(), 10);
+  }
+}
+
+let staffName = null;
+let projectName = null;
+
+if (staffId !== null) {
+  staffName = await getDisplayName('staff', staffId, db);
+}
+
+if (projectId !== null) {
+  projectName = await getDisplayName('projects', projectId, db);
+}
+
+if (staffName && projectName) {
+  purposeText = `Staff + Project Support -- ${staffName} & ${projectName}`;
+} else if (staffName) {
+  purposeText = `Staff Support -- ${staffName}`;
+} else if (projectName) {
+  purposeText = `Project Support -- ${projectName}`;
+} else {
+  console.warn('❌ No valid staffId or projectId in metadata.');
+}
 
       console.log('Purpose:', purposeText);
 
       // Send beautiful thank-you email
-      const donorFirstName = paymentData.metadata.donorName?.split(' ')[0] || 'Friend';
-      const formattedAmount = paymentData.currency === 'USD' 
-        ? `$${(paymentData.amount / 100).toFixed(2)}` 
-        : `₦${(paymentData.amount / 100).toLocaleString()}`;
+      const donorFirstName = validMetadata.donorName?.split(' ')[0] || 'Friend';
+      const formattedAmount = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: paymentData.currency || 'NGN',
+  minimumFractionDigits: 2,
+}).format(paymentData.amount / 100);
+
       
       const donationDate = new Date().toLocaleDateString('en-US', {
-        year: 'numeric', month: 'long', day: 'numeric'
-      });
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  timeZone: 'UTC'
+});
 
 
       await sgMail.send({
@@ -445,7 +498,7 @@ app.post('/webhook', async (req, res) => {
                   </div>
                   <div class="detail-row">
                     <div class="detail-label">Donation Type:</div>
-                    <div class="detail-value">${paymentData.metadata.donationType}</div>
+                    <div class="detail-value">${validMetadata.donationType || 'General'}</div>
                   </div>
                   <div class="detail-row">
                     <div class="detail-label">Purpose:</div>
@@ -497,35 +550,50 @@ app.post('/webhook', async (req, res) => {
 
 // Set port
 const PORT = process.env.PORT || 5000;
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
-app.get('/admin/donations', async (req, res) => {
+app.get('/admin/donations', async (req, res, next) => {
   try {
     const donations = await db('donations').orderBy('id', 'desc');
 
-    let tableRows = donations.map(d => {
-      const metadata = JSON.parse(d.metadata || '{}');
-      const donorName = metadata.donorName || '-';
-      const purpose = metadata.purpose || '-';
-      const donationType = metadata.donationType || '-';
-      const currency = d.currency || 'NGN';
-      const amount = currency === 'USD'
-        ? `$${(d.amount / 100).toFixed(2)}`
-        : `₦${(d.amount / 100).toLocaleString()}`;
-      const status = 'success'; // Later: make dynamic if needed
-      const reference = d.reference;
-      const date = new Date(d.created_at || d.timestamp || Date.now()).toLocaleDateString('en-US', {
+let tableRows = donations.map(d => {
+  let metadata = {};
+  try {
+    metadata = typeof d.metadata === 'string'
+    ? JSON.parse(d.metadata)
+    : (d.metadata || {});
+  } catch (err) {
+    console.error('❌ Invalid metadata JSON:', d.metadata);
+  }
+  const donorName = escapeHtml(metadata.donorName || '-');
+  const purpose = escapeHtml(metadata.purpose || '-');
+  const donationType = escapeHtml(metadata.donationType || '-');
+  const email = escapeHtml(d.email || '-');
+  const reference = d.reference;
+  const referenceEscaped = escapeHtml(reference);
+  const currency = d.currency || 'NGN';
+  const amount = formatCurrency(d.amount, currency);
+  const status = 'success'; // Later: make dynamic if needed
+  const date = new Date(d.created_at || d.timestamp || Date.now()).toLocaleDateString('en-US', {
         year: 'numeric', month: 'long', day: 'numeric'
-      });
+  });
 
       return `
         <tr>
           <td>${donorName}</td>
-          <td>${d.email}</td>
+          <td>${email}</td>
           <td>${amount}</td>
           <td>${currency}</td>
           <td>${purpose}</td>
           <td>${donationType}</td>
-          <td>${reference}</td>
+          <td>${referenceEscaped}</td>
           <td>${date}</td>
           <td><span class="status success">Success</span></td>
           <td class="actions">
@@ -749,43 +817,48 @@ app.get('/admin/donations', async (req, res) => {
 </body>
 </html>`);
   } catch (error) {
-    console.error('❌ Error loading admin dashboard:', error.message);
-    res.status(500).send('Something went wrong.');
-  }
+  next(new Error('Error loading admin dashboard'));
+}
 });
 
 // Get all active staff
-app.get('/staff', async (req, res) => {
+app.get('/staff', async (req, res, next) => {
   try {
     const staff = await db('staff').where({ active: true }).orderBy('name');
     res.json(staff);
   } catch (error) {
-    console.error('❌ Error fetching staff:', error.message);
-    res.status(500).json({ error: 'Failed to load staff list' });
-  }
+  next(new Error('Failed to load staff list'));
+}
 });
 
 // Get all projects
-app.get('/projects', async (req, res) => {
+app.get('/projects', async (req, res, next) => {
   try {
     const projects = await db('projects').orderBy('name');
     res.json(projects);
   } catch (error) {
-    console.error('❌ Error fetching projects:', error.message);
-    res.status(500).json({ error: 'Failed to load project list' });
-  }
+  next(new Error('Failed to load project list'));
+}
 });
 
 // Admin Summary Dashboard
-app.get('/admin/summary', requireAuth, async (req, res) => {
+app.get('/admin/summary', requireAuth, async (req, res, next) => {
   try {
     const donations = await db('donations').orderBy('created_at', 'desc');
+    const allStaff = await db('staff').select('id', 'name', 'active');
+    const allProjects = await db('projects').select('id', 'title');
+    const staffMap = new Map(allStaff.map(s => [s.id, s]));
+    const projectMap = new Map(allProjects.map(p => [p.id, p]));
+
+
 
     // Parse target month from query or use current
     const targetMonth = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
     const [year, month] = targetMonth.split('-').map(Number);
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 0, 23, 59, 59);
+    const monthStart = new Date(Date.UTC(year, month - 1, 1));
+const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+
 
     const filtered = donations.filter(d => {
       const date = new Date(d.created_at || d.timestamp || Date.now());
@@ -817,17 +890,27 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
       let label = '';
 
       if (metadata.staffId) {
-        const staff = await db('staff').where('id', parseInt(metadata.staffId)).first();
-        if (staff && staff.active !== false) {
-          key = `staff-${metadata.staffId}`;
-          label = `Staff – ${staff?.name || 'Unknown Staff'}`;
-          summary.totalStaff += amount;
-        }
+        const staffId = Number(metadata.staffId);
+if (!Number.isInteger(staffId)) throw new Error('Invalid staff ID');
+    
+  const staff = staffMap.get(staffId);  // ✅ from memory now
+
+    if (staff && staff.active !== false) {
+    key = `staff-${staffId}`;
+    label = `Staff – ${staff.name || 'Unknown Staff'}`;
+    summary.totalStaff += amount;
+    }
+
       } else if (metadata.projectId) {
-        const project = await db('projects').where('id', parseInt(metadata.projectId)).first();
-        key = `project-${metadata.projectId}`;
-        label = `Project – ${project?.name || 'Unknown Project'}`;
-        summary.totalProject += amount;
+        
+        const projectId = Number(metadata.projectId);
+if (!Number.isInteger(projectId)) throw new Error('Invalid project ID');
+
+    const project = projectMap.get(projectId);  // ✅ from memory
+
+    key = `project-${projectId}`;
+    label = `Project – ${project?.title || 'Unknown Project'}`;
+    summary.totalProject += amount;
       }
 
       if (key) {
@@ -1279,7 +1362,7 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
             </div>
             
             <div class="footer">
-                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
             </div>
         </div>
         
@@ -1299,22 +1382,14 @@ app.get('/admin/summary', requireAuth, async (req, res) => {
     `;
 
     res.send(html);
-  } catch (err) {
-    console.error('❌ Summary error:', err.message);
-    res.status(500).send(`
-      <div style="font-family: Arial; padding: 30px; text-align: center;">
-        <h2 style="color: #d32f2f;">Error Loading Summary</h2>
-        <p>${err.message}</p>
-        <a href="/admin/summary" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #003366; color: white; text-decoration: none; border-radius: 4px;">
-          Try Again
-        </a>
-      </div>
-    `);
-  }
+} catch (err) {
+  next(new Error('Failed to load summary'));
+}
 });
 
+
 // View and manage staff accounts (/admin/staff)
-app.get('/admin/staff', requireAuth, async (req, res) => {
+app.get('/admin/staff', requireAuth, async (req, res, next) => {
   try {
     const staffList = await db('staff').orderBy('name');
 
@@ -1406,33 +1481,47 @@ app.get('/admin/staff', requireAuth, async (req, res) => {
 
     res.send(html);
   } catch (err) {
-    console.error('❌ Error loading staff list:', err.message);
-    res.status(500).send('Failed to load staff list');
-  }
+  next(new Error('Failed to load staff list'));
+}
 });
 
-// POST route to toggle staff active/inactive
-app.post('/admin/toggle-staff/:id', requireAuth, async (req, res) => {
+app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
   try {
-    const staff = await db('staff').where('id', req.params.id).first();
-    if (!staff) return res.status(404).send('Staff not found');
+    const staffId = req.params.id;
 
-    await db('staff')
-      .where('id', req.params.id)
-      .update({
-        active: !staff.active,
-        updated_at: new Date().toISOString()
-      });
+    await db.transaction(async trx => {
+      const staff = await trx('staff').where('id', staffId).first();
+      if (!staff) throw new Error('Staff not found');
+
+      const newStatus = !staff.active;
+
+      // Update staff table
+      await trx('staff')
+        .where('id', staffId)
+        .update({
+          active: newStatus,
+          updated_at: new Date().toISOString()
+        });
+
+      // ✅ Also disable login access for deactivated staff
+      await trx('staff_accounts')
+        .where('staff_id', staffId)
+        .update({
+          disabled: !newStatus, // disable if staff is inactive
+          must_change_password: newStatus ? false : true,
+          updated_at: new Date().toISOString()
+        });
+    });
 
     res.redirect('/admin/staff');
   } catch (err) {
-    console.error('❌ Error toggling staff status:', err.message);
-    res.status(500).send('Failed to update staff status');
-  }
+  next(new Error('Failed to update staff status'));
+}
 });
 
+
 // View all projects
-app.get('/admin/projects', requireAuth, async (req, res) => {
+app.get('/admin/projects', requireAuth, async (req, res, next) => {
   try {
     const projects = await db('projects').orderBy('created_at', 'desc');
 
@@ -1491,30 +1580,29 @@ app.get('/admin/projects', requireAuth, async (req, res) => {
 
     res.send(html);
   } catch (err) {
-    console.error('❌ Project list error:', err.message);
-    res.status(500).send('Could not load project list.');
-  }
+  next(new Error('Could not load project list.'));
+}
 });
 
 // Toggle project active status
-app.post('/admin/toggle-project/:id', requireAuth, async (req, res) => {
+app.post('/admin/toggle-project/:id', requireAuth, async (req, res, next) => {
   const projectId = req.params.id;
   try {
     const project = await db('projects').where({ id: projectId }).first();
     if (!project) return res.status(404).send('Project not found.');
 
-    await db('projects')
-      .where({ id: projectId })
-      .update({
-        active: !project.active,
-        updated_at: new Date()
-      });
+   await db('projects')
+  .where({ id: projectId })
+  .update({
+    active: !project.active,
+    updated_at: new Date().toISOString()
+  });
+
 
     res.redirect('/admin/projects');
   } catch (err) {
-    console.error('❌ Toggle project error:', err.message);
-    res.status(500).send('Failed to update project.');
-  }
+  next(new Error('Failed to update project'));
+}
 });
 
 
@@ -1547,28 +1635,29 @@ app.get('/admin/add-project', requireAuth, (req, res) => {
 });
 
 // POST: Handle form submission
-app.post('/admin/add-project', requireAuth, async (req, res) => {
+app.post('/admin/add-project', requireAuth, async (req, res, next) => {
   const { name, description } = req.body;
 
   try {
-    await db('projects').insert({
-      name,
-      description,
-      active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    });
+  await db('projects').insert({
+    name,
+    description,
+    active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+
 
     res.redirect('/admin/projects');
   } catch (err) {
-    console.error('❌ Error adding project:', err.message);
-    res.status(500).send('Failed to add project.');
+    next(new Error('Failed to add project.'));
   }
 });
 
 
+
 // Show the form to add new staff + create account
-app.get('/admin/add-staff-account', requireAuth, async (req, res) => {
+app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
   try {
     const form = `
     <!DOCTYPE html>
@@ -1603,15 +1692,16 @@ app.get('/admin/add-staff-account', requireAuth, async (req, res) => {
     `;
     res.send(form);
   } catch (err) {
-    console.error('❌ Error loading form:', err.message);
-    res.status(500).send('Error loading form.');
-  }
+  next(new Error('Error loading form.'));
+}
 });
 
 // Handle form submission to add staff + create login
-app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
+app.post('/admin/add-staff-account', requireAuth, async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, password } = req.body;
+const email = req.body.email.toLowerCase();
+
 
     if (!name || !email || !password) {
       return res.status(400).send('Missing required fields.');
@@ -1643,18 +1733,19 @@ app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
       }
 
       // Hash password
-      const bcrypt = require('bcryptjs');
-      const password_hash = await bcrypt.hash(password, 10);
+      const password_hash = await bcrypt.hash(password, BCRYPT_COST);
+
 
       // Insert login credentials
-      await trx('staff_accounts').insert({
-        email,
-        password_hash,
-        staff_id: staffId,
-        must_change_password: true,
-        created_at: new Date(),
-        updated_at: new Date()
-      });
+     await trx('staff_accounts').insert({
+  email,
+  password_hash,
+  staff_id: staffId,
+  must_change_password: true,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString()
+});
+
     });
 
     res.send(`
@@ -1665,20 +1756,13 @@ app.post('/admin/add-staff-account', requireAuth, async (req, res) => {
       </div>
     `);
   } catch (err) {
-    console.error('❌ Add staff account error:', err.message);
-    res.status(500).send(`
-      <div style="font-family: Arial; padding: 30px;">
-        <h2 style="color: red;">Error Creating Staff Account</h2>
-        <p>${err.message}</p>
-        <a href="/admin/add-staff-account" style="color: #003366;">Try Again</a>
-      </div>
-    `);
-  }
+  next(new Error('Error creating staff account'));
+}
 });
 
 
 // Show assign projects form
-app.get('/admin/assign-projects', requireAuth, async (req, res) => {
+app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
   try {
     const staff = await db('staff').where({ active: true }).orderBy('name');
     const projects = await db('projects').where({ active: true }).orderBy('name');
@@ -1726,40 +1810,41 @@ app.get('/admin/assign-projects', requireAuth, async (req, res) => {
     `;
     res.send(html);
   } catch (err) {
-    console.error('❌ Assign project form error:', err.message);
-    res.status(500).send('Failed to load project assignment form.');
-  }
+  next(new Error('Failed to load project assignment form.'));
+}
 });
 
 // Handle project assignment
-app.post('/admin/assign-projects', requireAuth, async (req, res) => {
+app.post('/admin/assign-projects', requireAuth, async (req, res, next) => {
   const staffId = req.body.staffId;
   const selectedProjects = Array.isArray(req.body.projectIds)
     ? req.body.projectIds
     : [req.body.projectIds]; // Handles single or multiple
 
   try {
-    // Remove old assignments
-    await db('staff_projects').where({ staff_id: staffId }).del();
+    const now = new Date().toISOString();
+const assignments = selectedProjects.map(pid => ({
+  staff_id: staffId,
+  project_id: pid,
+  created_at: now
+}));
 
-    // Add new ones
-    const now = new Date();
-    const assignments = selectedProjects.map(pid => ({
-      staff_id: staffId,
-      project_id: pid,
-      created_at: now
-    }));
 
-    if (assignments.length) {
-      await db('staff_projects').insert(assignments);
-    }
+    // ✅ Wrap both delete + insert in a transaction
+    await db.transaction(async trx => {
+      await trx('staff_projects').where({ staff_id: staffId }).del();
 
-    res.redirect('/admin/projects'); // or confirmation message
+      if (assignments.length) {
+        await trx('staff_projects').insert(assignments);
+      }
+    });
+
+    res.redirect('/admin/projects'); // ✅ Don’t forget response!
   } catch (err) {
-    console.error('❌ Assign project error:', err.message);
-    res.status(500).send('Failed to assign projects.');
-  }
+  next(new Error('Failed to assign projects.'));
+}
 });
+
 
 // Login Form
 app.get('/login', (req, res) => {
@@ -1790,13 +1875,22 @@ app.get('/login', (req, res) => {
 
 
 // Login Handler
-app.post('/login', async (req, res) => {
+app.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const account = await db('staff_accounts').where({ email }).first();
+    const normalizedEmail = email.toLowerCase();
+
+    const account = await db('staff_accounts')
+      .whereRaw('LOWER(email) = ?', [normalizedEmail])
+      .first();
 
     if (!account) {
       return res.status(401).send('Invalid email or password.');
+    }
+
+    // ✅ Block deactivated accounts
+    if (account.disabled) {
+      return res.status(403).send('This account has been disabled.');
     }
 
     const isMatch = await bcrypt.compare(password, account.password_hash);
@@ -1805,21 +1899,25 @@ app.post('/login', async (req, res) => {
     }
 
     // ✅ Save session
-    req.session.staffId = account.staff_id;
-    req.session.accountId = account.id;
-
-    // ✅ Log session after it's set
-    console.log('SESSION DEBUG:', req.session);
-
-    if (account.must_change_password) {
-      return res.redirect('/change-password?force=true');
-    }
-
-    return res.redirect(`/staff-dashboard`);
-  } catch (err) {
-    console.error('❌ Login error:', err.message);
-    res.status(500).send('Server error during login.');
+   req.session.regenerate(err => {
+  if (err) {
+    next(new Error('Login failed. Please try again.'));
+    return;
   }
+
+  req.session.staffId = account.staff_id;
+  req.session.accountId = account.id;
+
+  if (account.must_change_password) {
+    return res.redirect('/change-password?force=true');
+  }
+
+  return res.redirect('/staff-dashboard');
+});
+
+  } catch (err) {
+  next(new Error('Server error during login.'));
+}
 });
 
 
@@ -1854,7 +1952,7 @@ app.get('/change-password', async (req, res) => {
 });
 
 
-app.post('/change-password', async (req, res) => {
+app.post('/change-password', async (req, res, next) => {
   console.log('SESSION DEBUG:', req.session);
   const { old_password, new_password, confirm_password } = req.body;
 
@@ -1873,19 +1971,26 @@ app.post('/change-password', async (req, res) => {
   }
 
   const newHash = await bcrypt.hash(new_password, 10);
-  await db('staff_accounts')
-    .where('staff_id', req.session.staffId)
-    .update({
-      password_hash: newHash,
-      must_change_password: false,
-      updated_at: new Date()
-    });
+await db('staff_accounts')
+  .where('staff_id', req.session.staffId)
+  .update({
+    password_hash: newHash,
+    must_change_password: false,
+    updated_at: new Date().toISOString()
+  });
+
 
   // ✅ Re-authenticate
+  req.session.regenerate((err) => {
+  if (err) {
+    return next(new Error('Could not reset session after password change.'));
+  }
+
   req.session.accountId = account.id;
   req.session.staffId = account.staff_id;
-
   res.redirect(`/staff-dashboard`);
+});
+
 });
 
 
@@ -1937,9 +2042,8 @@ const checkProjectAccess = async (req, res, next) => {
     req.projectId = numericProjectId;
     next();
   } catch (err) {
-    console.error('❌ Project access check error:', err);
-    res.status(500).send('Server error during authorization');
-  }
+  next(new Error('Server error during authorization'));
+}
 };
 
 // 2. Updated staff dashboard route
@@ -1957,15 +2061,17 @@ app.get('/staff-dashboard', requireStaffAuth, async (req, res) => {
     }
 
     // Date handling
-    const today = new Date();
-    const current = monthParam
-      ? new Date(`${monthParam}-01`)
-      : new Date(today.getFullYear(), today.getMonth(), 1);
-    
-    const monthKey = current.toLocaleString('default', { 
-      year: 'numeric', 
-      month: 'long' 
-    });
+const today = new Date();
+const current = monthParam
+  ? new Date(`${monthParam}-01T00:00:00.000Z`) // Ensures UTC if monthParam is provided
+  : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)); // Start of current month in UTC
+
+const monthKey = current.toLocaleString('default', { 
+  year: 'numeric', 
+  month: 'long',
+  timeZone: 'UTC'
+});
+
     
     // Calculate date range
     const monthStart = new Date(current);
@@ -2535,7 +2641,7 @@ app.get('/staff-dashboard', requireStaffAuth, async (req, res) => {
         </div>
         
         <div class="footer">
-            <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+           <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
         </div>
     </div>
     
@@ -2595,17 +2701,8 @@ app.get('/staff-dashboard', requireStaffAuth, async (req, res) => {
 `;
     res.send(html);
   } catch (err) {
-    console.error('❌ Staff dashboard error:', err.message);
-    res.status(500).send(`
-      <div style="font-family: Arial; padding: 30px; text-align: center;">
-        <h2 style="color: #d32f2f;">Error Loading Dashboard</h2>
-        <p>${err.message}</p>
-        <a href="/staff-dashboard?staffId=${staffId}" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #003366; color: white; text-decoration: none; border-radius: 4px;">
-          Try Again
-        </a>
-      </div>
-    `);
-  }
+  next(new Error('Failed to load staff dashboard'));
+}
 });
 
 
@@ -2613,7 +2710,7 @@ app.get('/staff-dashboard', requireStaffAuth, async (req, res) => {
 app.get('/project-dashboard', 
   requireStaffAuth,    // First check staff is logged in 
   checkProjectAccess,  // Then check project permission
-  async (req, res) => {
+  async (req, res, next) => {
   try {
     const projectId = req.projectId;
     const monthParam = req.query.month;
@@ -2625,15 +2722,19 @@ app.get('/project-dashboard',
     const project = await db('projects').where('id', parseInt(projectId)).first();
     if (!project) return res.status(404).send('Project not found');
 
-    // Determine current or selected month
-    const today = new Date();
-    const current = monthParam
-      ? new Date(monthParam + '-01')
-      : new Date(today.getFullYear(), today.getMonth(), 1);
+    // Determiconst today = new Date();
+const current = monthParam
+  ? new Date(Date.UTC(...monthParam.split('-').map((n, i) => i === 1 ? Number(n) - 1 : Number(n)), 1))
+  : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
 
-    const monthKey = current.toLocaleString('default', { year: 'numeric', month: 'long' });
-    const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
-    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+const monthKey = current.toLocaleString('default', {
+  year: 'numeric',
+  month: 'long',
+  timeZone: 'UTC'
+});
+
+const monthStart = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
+const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
     const donations = await db('donations')
       .whereBetween('created_at', [monthStart.toISOString(), monthEnd.toISOString()])
@@ -3181,7 +3282,7 @@ app.get('/project-dashboard',
             </div>
             
             <div class="footer">
-                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
             </div>
         </div>
         
@@ -3200,21 +3301,12 @@ app.get('/project-dashboard',
 
     res.send(html);
   } catch (err) {
-    console.error('❌ Project dashboard error:', err.message);
-    res.status(500).send(`
-      <div style="font-family: Arial; padding: 30px; text-align: center;">
-        <h2 style="color: #d32f2f;">Error Loading Dashboard</h2>
-        <p>${err.message}</p>
-        <a href="/project-dashboard?projectId=${projectId}" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #003366; color: white; text-decoration: none; border-radius: 4px;">
-          Try Again
-        </a>
-      </div>
-    `);
-  }
+  next(new Error('Failed to load project dashboard'));
+}
 });
 
 // Get projects accessible to current staff
-app.get('/api/accessible-projects', requireStaffAuth, async (req, res) => {
+app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => {
   try {
     const staffId = req.session.staffId;
     const projects = await db('projects')
@@ -3224,12 +3316,24 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res) => {
 
     res.json(projects);
   } catch (err) {
-    console.error('❌ Accessible projects error:', err);
-    res.status(500).json({ error: 'Failed to load accessible projects' });
-  }
+  next(new Error('Failed to load accessible projects'));
+}
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Register global error handler FIRST
+app.use((err, req, res, next) => {
+  console.error('❌ Uncaught error:', err.stack);
+  res.status(500).json({ error: err.message || 'Internal server error' });
 });
+
+// Then start the server AFTER middleware and routes are all set
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('❌ Failed to initialize database:', err);
+    process.exit(1);
+  });
