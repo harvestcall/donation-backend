@@ -889,29 +889,33 @@ const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
       let key = null;
       let label = '';
 
-      if (metadata.staffId) {
-        const staffId = Number(metadata.staffId);
-if (!Number.isInteger(staffId)) throw new Error('Invalid staff ID');
-    
-  const staff = staffMap.get(staffId);  // ✅ from memory now
+     if (metadata.staffId) {
+  const staffId = Number(metadata.staffId);
+  if (!Number.isInteger(staffId)) {
+    console.warn('❌ Invalid staffId, skipping donation:', metadata.staffId);
+    continue;
+  }
 
-    if (staff && staff.active !== false) {
+  const staff = staffMap.get(staffId);
+  if (staff && staff.active !== false) {
     key = `staff-${staffId}`;
     label = `Staff – ${staff.name || 'Unknown Staff'}`;
     summary.totalStaff += amount;
-    }
+  }
 
-      } else if (metadata.projectId) {
-        
-        const projectId = Number(metadata.projectId);
-if (!Number.isInteger(projectId)) throw new Error('Invalid project ID');
+} else if (metadata.projectId) {
+  const projectId = Number(metadata.projectId);
+  if (!Number.isInteger(projectId)) {
+    console.warn('❌ Invalid projectId, skipping donation:', metadata.projectId);
+    continue;
+  }
 
-    const project = projectMap.get(projectId);  // ✅ from memory
+  const project = projectMap.get(projectId);
+  key = `project-${projectId}`;
+  label = `Project – ${project?.title || 'Unknown Project'}`;
+  summary.totalProject += amount;
+}
 
-    key = `project-${projectId}`;
-    label = `Project – ${project?.title || 'Unknown Project'}`;
-    summary.totalProject += amount;
-      }
 
       if (key) {
         if (!summary.records[key]) summary.records[key] = { label, total: 0 };
