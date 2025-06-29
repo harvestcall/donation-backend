@@ -249,10 +249,10 @@ if (error) {
   console.error('❌ Invalid metadata in webhook:', error.details);
   return res.status(400).send('Invalid metadata');
 }
+
       console.log('✅ Verified Payment:', paymentData.reference);
       const { donorName, ...safeMetadata } = paymentData.metadata || {};
       console.log('🔎 Payment Metadata:', safeMetadata);
-
 
       // Save to database
       await db('donations').insert({
@@ -1383,6 +1383,7 @@ if (!Number.isInteger(projectId)) throw new Error('Invalid project ID');
 
     res.send(html);
 } catch (err) {
+  console.error('❌ Summary route error details:', err);
   next(new Error('Failed to load summary'));
 }
 });
