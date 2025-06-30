@@ -116,6 +116,10 @@ const formatCurrency = require('./utils/formatCurrency');
 const Joi = require('joi');
 const helmet = require('helmet');
 const crypto = require('crypto');
+const { param, body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
+const apicache = require('apicache');
+const cache = apicache.middleware;
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
 // ✅ Paystack signature verification middleware
@@ -137,6 +141,8 @@ const verifyPaystackWebhook = (req, res, next) => {
   next();
 };
 
+
+
 // ✅ Joi schema for Paystack donation metadata
 const metadataSchema = Joi.object({
   donorName: Joi.string().allow(''),
@@ -145,11 +151,135 @@ const metadataSchema = Joi.object({
   projectId: Joi.string().pattern(/^\d+$/).allow('')
 });
 
+
+// 🔐 Protect login: 5 attempts per 10 minutes per IP 
+const loginLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: 'Too many login attempts. Please try again in 10 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+   handler: (req, res, next, options) => {
+  console.warn(`⛔ Rate limit exceeded on ${req.originalUrl} from ${req.ip}`);
+  
+  if (req.headers.accept?.includes('application/json')) {
+    res.status(options.statusCode).json({
+      error: {
+        message: options.message,
+        retryAfterSeconds: Math.floor(options.windowMs / 1000)
+      }
+    });
+  } else {
+    res.status(options.statusCode).send(`
+      <html><body>
+        <h2>Too Many Requests</h2>
+        <p>${options.message}</p>
+      </body></html>
+    `);
+  }
+
+  }
+});
+
+// 💳 Protect initialize-payment: 20 attempts per 15 minutes per IP
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many payment attempts. Please wait and try again.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+  console.warn(`⛔ Rate limit exceeded on ${req.originalUrl} from ${req.ip}`);
+  
+  if (req.headers.accept?.includes('application/json')) {
+    res.status(options.statusCode).json({
+      error: {
+        message: options.message,
+        retryAfterSeconds: Math.floor(options.windowMs / 1000)
+      }
+    });
+  } else {
+    res.status(options.statusCode).send(`
+      <html><body>
+        <h2>Too Many Requests</h2>
+        <p>${options.message}</p>
+      </body></html>
+    `);
+  }
+
+  }
+});
+
+// 📩 Protect webhook (light limit to reduce abuse)
+const webhookLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 10,
+  message: 'Too many webhook requests. Calm down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+  console.warn(`⛔ Rate limit exceeded on ${req.originalUrl} from ${req.ip}`);
+  
+  if (req.headers.accept?.includes('application/json')) {
+    res.status(options.statusCode).json({
+      error: {
+        message: options.message,
+        retryAfterSeconds: Math.floor(options.windowMs / 1000)
+      }
+    });
+  } else {
+    res.status(options.statusCode).send(`
+      <html><body>
+        <h2>Too Many Requests</h2>
+        <p>${options.message}</p>
+      </body></html>
+    `);
+  }
+
+  }
+});
+
+class AppError extends Error {
+  constructor(message, status = 500) {
+    super(message);
+    this.name = this.constructor.name;
+    this.status = status;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+class ValidationError extends AppError {
+  constructor(message = 'Invalid input') {
+    super(message, 400);
+  }
+}
+
+class NotFoundError extends AppError {
+  constructor(message = 'Resource not found') {
+    super(message, 404);
+  }
+}
+
+class DatabaseError extends AppError {
+  constructor(message = 'Database error') {
+    super(message, 500);
+  }
+}
+
+
 // ✅ UTC-safe date helper
 function createUTCDate(year, month, day) {
   return new Date(Date.UTC(year, month, day));
 }
 
+// Reusable validation middleware
+function validateRequest(req, res, next) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(422).json({ errors: errors.array() });
+  }
+  next();
+}
 
 // ✅ Define pgPool BEFORE using it
 const pgPool = new Pool({
@@ -162,7 +292,7 @@ app.set('trust proxy', 1);
 
 // ✅ Session middleware
 if (!process.env.SESSION_SECRET) {
-  throw new Error('❌ SESSION_SECRET is required but not set in the environment!');
+  throw new AppError('❌ SESSION_SECRET is required but not set in the environment!', 500);
 }
 app.use(session({
   store: new pgSession({
@@ -213,23 +343,36 @@ if (process.env.NODE_ENV !== 'production') {
       const all = await db('staff').select('*');
       res.json(all);
     } catch (err) {
-      next(new Error('Failed to fetch debug staff data'));
+      next(new DatabaseError('Failed to fetch debug staff data'));
     }
   });
+
+  // --- Sanitize any :id route parameters globally ---
+app.param('id', (req, res, next, id) => {
+  const parsedId = parseInt(id);
+  if (isNaN(parsedId) || parsedId < 0) {
+    return res.status(400).send('Invalid ID parameter');
+  }
+  req.sanitizedId = parsedId;
+  next();
+});
+
 
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
     try {
       const all = await db('donations').select('*');
       res.json(all);
     } catch (err) {
-      next(new Error('Failed to fetch debug donation data'));
+      next(new DatabaseError('Failed to fetch debug donation data'));
     }
   });
 }
 
 
 // Payment initialization endpoint
-app.post('/initialize-payment', async (req, res, next) => {
+app.post('/initialize-payment',
+  paymentLimiter,
+  async (req, res, next) => {
   try {
     const { email, amount, currency, metadata } = req.body;
     const amountInKobo = amount * 100;
@@ -261,12 +404,15 @@ app.post('/initialize-payment', async (req, res, next) => {
 
   } catch (error) {
     console.error(error.response?.data || error.message);
-    next(new Error('Payment initialization failed'));
+    next(new DatabaseError('Payment initialization failed'));
   }
 });
 
 // Webhook for payment verification
-app.post('/webhook', verifyPaystackWebhook, async (req, res, next) => {
+app.post('/webhook',
+  webhookLimiter,
+  verifyPaystackWebhook,
+  async (req, res, next) => {
   try {
     const event = req.body;
 
@@ -275,13 +421,19 @@ app.post('/webhook', verifyPaystackWebhook, async (req, res, next) => {
 
       if (!paymentData.amount || paymentData.amount <= 0) {
         console.warn('❌ Invalid or zero donation amount:', paymentData.amount);
-        return res.status(400).send('Invalid donation amount');
+        return res.status(400).json({
+  error: {
+    name: 'ValidationError',
+    message: 'Invalid donation amount'
+  }
+});
+
       }
 
       const { error, value: validMetadata } = metadataSchema.validate(paymentData.metadata || {});
       if (error) {
         console.error('❌ Invalid metadata in webhook:', error.details);
-        return res.status(400).send('Invalid metadata');
+        return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid metadata' } });
       }
 
       console.log('✅ Verified Payment:', paymentData.reference);
@@ -864,7 +1016,7 @@ app.get('/admin/donations', async (req, res, next) => {
 </html>`);
   }  catch (error) {
     console.error('❌ Error loading admin dashboard:', error.message);
-    next(new Error('Failed to load admin donations'));
+    next(new DatabaseError('Failed to load admin donations'));
   }
 });
 
@@ -874,7 +1026,7 @@ app.get('/staff', async (req, res, next) => {
     const staff = await db('staff').where({ active: true }).orderBy('name');
     res.json(staff);
   } catch (error) {
-  next(new Error('Failed to load staff list'));
+  next(new DatabaseError('Failed to load staff list'));
 }
 });
 
@@ -884,13 +1036,16 @@ app.get('/projects', async (req, res, next) => {
     const projects = await db('projects').orderBy('name');
     res.json(projects);
   } catch (error) {
-  next(new Error('Failed to load project list'));
+  next(new DatabaseError('Failed to load project list'));
 }
 });
 
 // Admin Summary Dashboard
-app.get('/admin/summary', requireAuth, async (req, res, next) => {
-  try {
+app.get('/admin/summary',
+  requireAuth,
+  cache('5 minutes'),  // ⬅️ Caches response for 5 minutes
+  async (req, res, next) => {
+    try {
     const donations = await db('donations').orderBy('created_at', 'desc');
     const allStaff = await db('staff').select('id', 'name', 'active');
     const allProjects = await db('projects').select('id', 'name');
@@ -901,7 +1056,7 @@ app.get('/admin/summary', requireAuth, async (req, res, next) => {
     const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
 
     if (!/^\d{4}-\d{2}$/.test(targetMonth)) {
-      return res.status(400).send('Invalid month format');
+      return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid month format' } });
     }
 
     const [year, month] = targetMonth.split('-').map(Number);
@@ -1342,7 +1497,7 @@ app.get('/admin/summary', requireAuth, async (req, res, next) => {
                 <a href="/admin/summary?month=${prev}" class="nav-btn">
                     <i class="fas fa-chevron-left"></i>
                 </a>
-                <div class="current-month">${title}</div>
+                <div class="current-month">${escapeHtml(title)}</div>
                 <a href="/admin/summary?month=${next}" class="nav-btn">
                     <i class="fas fa-chevron-right"></i>
                 </a>
@@ -1405,7 +1560,7 @@ app.get('/admin/summary', requireAuth, async (req, res, next) => {
                                         <div class="recipient-icon ${r.label.includes('Staff') ? 'staff-icon' : 'project-icon'}">
                                             <i class="fas ${r.label.includes('Staff') ? 'fa-user' : 'fa-project-diagram'}"></i>
                                         </div>
-                                        <div>${r.label}</div>
+                                        <div>${escapeHtml(r.label)}</div>
                                     </div>
                                 </td>
                                 <td class="amount">₦${r.total.toLocaleString()}</td>
@@ -1515,8 +1670,8 @@ app.get('/admin/staff', requireAuth, async (req, res, next) => {
         <tbody>
           ${staffList.map(s => `
             <tr>
-              <td>${s.name}</td>
-              <td>${s.email}</td>
+              <td>${escapeHtml(s.name)}</td>
+              <td>${escapeHtml(s.email)}</td>
               <td>${s.active ? 'Active' : 'Inactive'}</td>
               <td>
                 <form method="POST" action="/admin/toggle-staff/${s.id}" style="display:inline;">
@@ -1535,21 +1690,20 @@ app.get('/admin/staff', requireAuth, async (req, res, next) => {
 
     res.send(html);
   } catch (err) {
-  next(new Error('Failed to load staff list'));
+  next(new DatabaseError('Failed to load staff list'));
 }
 });
 
 app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
   try {
-    const staffId = req.params.id;
+    const staffId = req.sanitizedId;
 
     await db.transaction(async trx => {
       const staff = await trx('staff').where('id', staffId).first();
-      if (!staff) throw new Error('Staff not found');
+      if (!staff) throw new NotFoundError('Staff not found');
 
       const newStatus = !staff.active;
 
-      // Update staff table
       await trx('staff')
         .where('id', staffId)
         .update({
@@ -1557,11 +1711,10 @@ app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
           updated_at: new Date().toISOString()
         });
 
-      // ✅ Also disable login access for deactivated staff
       await trx('staff_accounts')
         .where('staff_id', staffId)
         .update({
-          disabled: !newStatus, // disable if staff is inactive
+          disabled: !newStatus,
           must_change_password: newStatus ? false : true,
           updated_at: new Date().toISOString()
         });
@@ -1569,9 +1722,10 @@ app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
 
     res.redirect('/admin/staff');
   } catch (err) {
-  next(new Error('Failed to update staff status'));
-}
+    next(new DatabaseError('Failed to update staff status'));
+  }
 });
+
 
 
 // View all projects
@@ -1616,8 +1770,8 @@ app.get('/admin/projects', requireAuth, async (req, res, next) => {
           <tbody>
             ${projects.map(p => `
               <tr>
-                <td>${p.name}</td>
-                <td>${p.description || '-'}</td>
+                <td>${escapeHtml(p.name)}</td>
+                <td>${escapeHtml(p.description || '-')}</td>
                 <td class="${p.active ? 'status' : 'inactive'}">${p.active ? 'Active' : 'Inactive'}</td>
                 <td>
                   <form method="POST" action="/admin/toggle-project/${p.id}" style="display:inline;">
@@ -1634,29 +1788,32 @@ app.get('/admin/projects', requireAuth, async (req, res, next) => {
 
     res.send(html);
   } catch (err) {
-  next(new Error('Could not load project list.'));
+  next(new DatabaseError('Could not load project list.'));
 }
 });
 
 // Toggle project active status
 app.post('/admin/toggle-project/:id', requireAuth, async (req, res, next) => {
-  const projectId = req.params.id;
+  const projectId = req.sanitizedId;
   try {
     const project = await db('projects').where({ id: projectId }).first();
-    if (!project) return res.status(404).send('Project not found.');
+    if (!project) {
+      return res.status(404).json({ 
+        error: { name: 'NotFoundError', message: 'Project not found.' } 
+      });
+    }
 
-   await db('projects')
-  .where({ id: projectId })
-  .update({
-    active: !project.active,
-    updated_at: new Date().toISOString()
-  });
-
+    await db('projects')
+      .where({ id: projectId })
+      .update({
+        active: !project.active,
+        updated_at: new Date().toISOString()
+      });
 
     res.redirect('/admin/projects');
   } catch (err) {
-  next(new Error('Failed to update project'));
-}
+    next(new DatabaseError('Failed to update project'));
+  }
 });
 
 
@@ -1689,25 +1846,30 @@ app.get('/admin/add-project', requireAuth, (req, res) => {
 });
 
 // POST: Handle form submission
-app.post('/admin/add-project', requireAuth, async (req, res, next) => {
-  const { name, description } = req.body;
+app.post('/admin/add-project',
+  requireAuth,
+  [
+    body('name').isString().trim().notEmpty().withMessage('Project name is required'),
+    body('description').optional().isString().trim()
+  ],
+  validateRequest,
+  async (req, res, next) => {
+    const { name, description } = req.body;
 
-  try {
-  await db('projects').insert({
-    name,
-    description,
-    active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  });
-
-
-    res.redirect('/admin/projects');
-  } catch (err) {
-    next(new Error('Failed to add project.'));
+    try {
+      await db('projects').insert({
+        name,
+        description,
+        active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      res.redirect('/admin/projects');
+    } catch (err) {
+      next(new DatabaseError('Failed to add project.'));
+    }
   }
-});
-
+);
 
 
 // Show the form to add new staff + create account
@@ -1746,73 +1908,67 @@ app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
     `;
     res.send(form);
   } catch (err) {
-  next(new Error('Error loading form.'));
+  next(new DatabaseError('Error loading form.'));
 }
 });
 
 // Handle form submission to add staff + create login
-app.post('/admin/add-staff-account', requireAuth, async (req, res, next) => {
-  try {
-    const { name, password } = req.body;
-const email = req.body.email.toLowerCase();
+app.post('/admin/add-staff-account',
+  requireAuth,
+  [
+    body('name').isString().trim().notEmpty().withMessage('Name is required'),
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long')
+  ],
+  validateRequest,
+  async (req, res, next) => {
+    try {
+      const { name, password } = req.body;
+      const email = req.body.email.toLowerCase();
 
-
-    if (!name || !email || !password) {
-      return res.status(400).send('Missing required fields.');
-    }
-
-    // Check if email already exists
-    const existing = await db('staff').where({ email }).first();
-    if (existing) {
-      return res.status(400).send(`
-        <div style="font-family: Arial; padding: 30px;">
-          <h2 style="color: red;">Staff Already Exists</h2>
-          <p>A staff with email <strong>${email}</strong> already exists.</p>
-          <a href="/admin/add-staff-account" style="color: #003366;">Try Again</a>
-        </div>
-      `);
-    }
-
-    // Start database transaction
-    await db.transaction(async trx => {
-      // Insert new staff with proper ID retrieval
-      const insertedStaff = await trx('staff')
-        .insert({ name, email, active: true })
-        .returning('id'); // Works for both SQLite and PostgreSQL
-
-      const staffId = insertedStaff[0]?.id || insertedStaff[0];
-      
-      if (!staffId) {
-        throw new Error('Failed to retrieve staff ID after insertion');
+      const existing = await db('staff').where({ email }).first();
+      if (existing) {
+        return res.status(400).send(`
+          <div style="font-family: Arial; padding: 30px;">
+            <h2 style="color: red;">Staff Already Exists</h2>
+            <p>A staff with email <strong>${email}</strong> already exists.</p>
+            <a href="/admin/add-staff-account" style="color: #003366;">Try Again</a>
+          </div>
+        `);
       }
 
-      // Hash password
-      const password_hash = await bcrypt.hash(password, BCRYPT_COST);
+      await db.transaction(async trx => {
+        const insertedStaff = await trx('staff')
+          .insert({ name, email, active: true })
+          .returning('id');
 
+        const staffId = insertedStaff[0]?.id || insertedStaff[0];
+        if (!staffId) throw new DatabaseError('Failed to retrieve staff ID after insertion');
 
-      // Insert login credentials
-     await trx('staff_accounts').insert({
-  email,
-  password_hash,
-  staff_id: staffId,
-  must_change_password: true,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString()
-});
+        const password_hash = await bcrypt.hash(password, BCRYPT_COST);
+        await trx('staff_accounts').insert({
+          email,
+          password_hash,
+          staff_id: staffId,
+          must_change_password: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      });
 
-    });
+      res.send(`
+        <div style="font-family: Arial; padding: 30px;">
+          <h2 style="color: #2E7D32;">✅ Staff Account Created</h2>
+          <p>${name} with login <strong>${email}</strong> has been added successfully.</p>
+          <a href="/admin/add-staff-account" style="display:inline-block;margin-top:20px;background:#003366;color:white;padding:10px 20px;text-decoration:none;border-radius:4px;">Add Another</a>
+        </div>
+      `);
+    } catch (err) {
+      next(new DatabaseError('Error creating staff account'));
+    }
+  }
+);
 
-    res.send(`
-      <div style="font-family: Arial; padding: 30px;">
-        <h2 style="color: #2E7D32;">✅ Staff Account Created</h2>
-        <p>${name} with login <strong>${email}</strong> has been added successfully.</p>
-        <a href="/admin/add-staff-account" style="display:inline-block;margin-top:20px;background:#003366;color:white;padding:10px 20px;text-decoration:none;border-radius:4px;">Add Another</a>
-      </div>
-    `);
-  } catch (err) {
-  next(new Error('Error creating staff account'));
-}
-});
 
 
 // Show assign projects form
@@ -1844,14 +2000,14 @@ app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
           <label for="staffId">Select Staff</label>
           <select name="staffId" required>
             <option value="">-- Choose Staff --</option>
-            ${staff.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+            ${staff.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
           </select>
 
           <label>Choose Project(s)</label>
           ${projects.map(p => `
             <div class="project-item">
               <input type="checkbox" name="projectIds" value="${p.id}" id="project-${p.id}" />
-              <label for="project-${p.id}">${p.name}</label>
+              <label for="project-${p.id}">${escapeHtml(p.name)}</label>
             </div>
           `).join('')}
 
@@ -1864,7 +2020,7 @@ app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
     `;
     res.send(html);
   } catch (err) {
-  next(new Error('Failed to load project assignment form.'));
+  next(new DatabaseError('Failed to load project assignment form.'));
 }
 });
 
@@ -1895,7 +2051,7 @@ const assignments = selectedProjects.map(pid => ({
 
     res.redirect('/admin/projects'); // ✅ Don’t forget response!
   } catch (err) {
-  next(new Error('Failed to assign projects.'));
+  next(new DatabaseError('Failed to assign projects.'));
 }
 });
 
@@ -1929,50 +2085,67 @@ app.get('/login', (req, res) => {
 
 
 // Login Handler
-app.post('/login', async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-    const normalizedEmail = email.toLowerCase();
+app.post('/login',
+  loginLimiter,
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Email is required'),
+    body('password').isString().notEmpty().withMessage('Password is required')
+  ],
+  validateRequest,
+  async (req, res, next) => {
+    try {
+      const { email, password } = req.body;
+      const normalizedEmail = email.toLowerCase();
 
-    const account = await db('staff_accounts')
-      .whereRaw('LOWER(email) = ?', [normalizedEmail])
-      .first();
+      const account = await db('staff_accounts')
+  .whereRaw('LOWER(email) = ?', [normalizedEmail])
+  .first();
 
-    if (!account) {
-      return res.status(401).send('Invalid email or password.');
+if (!account) {
+  return res.status(401).json({
+    error: {
+      name: 'Unauthorized',
+      message: 'Invalid email or password.'
     }
-
-    // ✅ Block deactivated accounts
-    if (account.disabled) {
-      return res.status(403).send('This account has been disabled.');
-    }
-
-    const isMatch = await bcrypt.compare(password, account.password_hash);
-    if (!isMatch) {
-      return res.status(401).send('Invalid email or password.');
-    }
-
-    // ✅ Save session
-   req.session.regenerate(err => {
-  if (err) {
-    next(new Error('Login failed. Please try again.'));
-    return;
-  }
-
-  req.session.staffId = account.staff_id;
-  req.session.accountId = account.id;
-
-  if (account.must_change_password) {
-    return res.redirect('/change-password?force=true');
-  }
-
-  return res.redirect('/staff-dashboard');
-});
-
-  } catch (err) {
-  next(new Error('Server error during login.'));
+  });
 }
-});
+
+if (account.disabled) {
+  return res.status(403).json({
+    error: {
+      name: 'Forbidden',
+      message: 'This account has been disabled.'
+    }
+  });
+}
+
+const isMatch = await bcrypt.compare(password, account.password_hash);
+if (!isMatch) {
+  return res.status(401).json({
+    error: {
+      name: 'Unauthorized',
+      message: 'Invalid email or password.'
+    }
+  });
+}
+
+      req.session.regenerate(err => {
+        if (err) return next(new AppError('Login failed. Please try again.', 500));
+        req.session.staffId = account.staff_id;
+        req.session.accountId = account.id;
+
+        if (account.must_change_password) {
+          return res.redirect('/change-password?force=true');
+        }
+
+        return res.redirect('/staff-dashboard');
+      });
+    } catch (err) {
+      next(new DatabaseError('Server error during login.'));
+    }
+  }
+);
+
 
 
 // Render change password form
@@ -2007,43 +2180,58 @@ app.get('/change-password', async (req, res) => {
 
 
 app.post('/change-password', async (req, res, next) => {
-  console.log('SESSION DEBUG:', req.session);
   const { old_password, new_password, confirm_password } = req.body;
-
-  if (!req.session || !req.session.staffId) {
-    return res.status(401).send('Unauthorized');
+  
+  if (!req.session.staffId) {
+    return res.status(401).json({ 
+      error: { name: 'Unauthorized', message: 'Unauthorized' } 
+    });
   }
 
-  const account = await db('staff_accounts').where('staff_id', req.session.staffId).first();
-  if (!account) return res.status(404).send('Account not found.');
+  try {
+    const account = await db('staff_accounts')
+      .where('staff_id', req.session.staffId)
+      .first();
 
-  const valid = await bcrypt.compare(old_password, account.password_hash);
-  if (!valid) return res.status(400).send('Current password is incorrect.');
+    if (!account) {
+      return res.status(404).json({ 
+        error: { name: 'NotFoundError', message: 'Account not found.' } 
+      });
+    }
 
-  if (new_password !== confirm_password) {
-    return res.status(400).send('New passwords do not match.');
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ 
+        error: { name: 'ValidationError', message: 'New passwords do not match.' } 
+      });
+    }
+
+    const isMatch = await bcrypt.compare(old_password, account.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ 
+        error: { name: 'ValidationError', message: 'Current password is incorrect.' } 
+      });
+    }
+
+    const newHash = await bcrypt.hash(new_password, BCRYPT_COST);
+    await db('staff_accounts')
+      .where('staff_id', req.session.staffId)
+      .update({
+        password_hash: newHash,
+        must_change_password: false,
+        updated_at: new Date().toISOString()
+      });
+
+    req.session.regenerate((err) => {
+      if (err) {
+        return next(new AppError('Could not reset session after password change.', 500));
+      }
+      req.session.accountId = account.id;
+      req.session.staffId = account.staff_id;
+      res.redirect('/staff-dashboard');
+    });
+  } catch (err) {
+    next(new DatabaseError('Password change failed'));
   }
-
-  const newHash = await bcrypt.hash(new_password, 10);
-await db('staff_accounts')
-  .where('staff_id', req.session.staffId)
-  .update({
-    password_hash: newHash,
-    must_change_password: false,
-    updated_at: new Date().toISOString()
-  });
-
-
-  // ✅ Re-authenticate
-  req.session.regenerate((err) => {
-  if (err) {
-    return next(new Error('Could not reset session after password change.'));
-  }
-
-  req.session.accountId = account.id;
-  req.session.staffId = account.staff_id;
-  res.redirect(`/staff-dashboard`);
-});
 
 });
 
@@ -2096,7 +2284,7 @@ const checkProjectAccess = async (req, res, next) => {
     req.projectId = numericProjectId;
     next();
   } catch (err) {
-  next(new Error('Server error during authorization'));
+  next(new AppError('Server error during authorization', 500));
 }
 };
 
@@ -2178,7 +2366,7 @@ const monthKey = current.toLocaleString('default', {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${staff.name} - Staff Dashboard</title>
+    <title>${escapeHtml(staff.name)} - Staff Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -2587,7 +2775,7 @@ const monthKey = current.toLocaleString('default', {
             <div class="staff-header">
                 <div class="staff-avatar">${staff.name.charAt(0)}</div>
                 <div class="staff-info">
-                    <h1>${staff.name}</h1>
+                    <h1>${escapeHtml(staff.name)}</h1>
                     <p>Staff Support Dashboard</p>
                 </div>
             </div>
@@ -2610,7 +2798,7 @@ const monthKey = current.toLocaleString('default', {
             <a href="/staff-dashboard?month=${prev}" class="nav-btn">
                 <i class="fas fa-chevron-left"></i>
             </a>
-            <div class="current-month">${monthKey}</div>
+            <div class="current-month">${escapeHtml(monthKey)}</div>
             <a href="/staff-dashboard?month=${next}" class="nav-btn">
                 <i class="fas fa-chevron-right"></i>
             </a>
@@ -2664,7 +2852,7 @@ const monthKey = current.toLocaleString('default', {
                     ? `<div class="no-donations">
                         <i class="fas fa-inbox"></i>
                         <h3>No Donations This Month</h3>
-                        <p>Your supporters haven't made any contributions for ${monthKey} yet. Share your ministry story to encourage giving!</p>
+                        <p>Your supporters haven't made any contributions for ${escapeHtml(monthKey)} yet. Share your ministry story to encourage giving!</p>
                     </div>`
                     : `<table>
                         <thead>
@@ -2706,7 +2894,7 @@ const monthKey = current.toLocaleString('default', {
                                             <div class="donor-icon">
                                                 <i class="fas fa-user"></i>
                                             </div>
-                                            <div>${metadata.donorName || 'Anonymous Supporter'}</div>
+                                            <div>${escapeHtml(metadata.donorName || 'Anonymous Supporter')}</div>
                                         </div>
                                     </td>
                                     <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
@@ -2781,7 +2969,7 @@ const monthKey = current.toLocaleString('default', {
 `;
     res.send(html);
   } catch (err) {
-  next(new Error('Failed to load staff dashboard'));
+  next(new AppError('Failed to load staff dashboard', 500));
 }
 });
 
@@ -2802,7 +2990,7 @@ app.get('/project-dashboard',
     const project = await db('projects').where('id', parseInt(projectId)).first();
     if (!project) return res.status(404).send('Project not found');
 
-    // Determiconst today = new Date();
+    const today = new Date();
 const current = monthParam
   ? new Date(Date.UTC(...monthParam.split('-').map((n, i) => i === 1 ? Number(n) - 1 : Number(n)), 1))
   : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
@@ -2858,7 +3046,7 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${project.name} - Project Dashboard</title>
+        <title>${escapeHtml(project.name)} - Project Dashboard</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <style>
             :root {
@@ -3259,8 +3447,8 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
                         <i class="fas fa-project-diagram"></i>
                     </div>
                     <div class="project-info">
-                        <h1>${project.name}</h1>
-                        <p>${project.description || 'Project funding dashboard'}</p>
+                        <h1>${escapeHtml(project.name)}</h1>
+                        <p>${escapeHtml(project.description || 'Project funding dashboard')}</p>
                     </div>
                 </div>
                 <div class="controls">
@@ -3274,7 +3462,7 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
                 <a href="/project-dashboard?projectId=${projectId}&month=${prevMonth(current)}" class="nav-btn">
                     <i class="fas fa-chevron-left"></i>
                 </a>
-                <div class="current-month">${monthKey}</div>
+                <div class="current-month">${escapeHtml(monthKey)}</div>
                 <a href="/project-dashboard?projectId=${projectId}&month=${nextMonth(current)}" class="nav-btn">
                     <i class="fas fa-chevron-right"></i>
                 </a>
@@ -3327,7 +3515,7 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
                     <div class="no-donations">
                         <i class="fas fa-inbox"></i>
                         <h3>No Donations This Month</h3>
-                        <p>This project hasn't received any contributions for ${monthKey} yet. Share the impact to encourage support!</p>
+                        <p>This project hasn't received any contributions for ${escapeHtml(monthKey)} yet. Share the impact to encourage support!</p>
                     </div>
                 ` : `
                     <table>
@@ -3364,13 +3552,13 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
                                             <div class="donor-icon">
                                                 <i class="fas fa-user"></i>
                                             </div>
-                                            <div>${metadata.donorName || 'Anonymous Supporter'}</div>
+                                            <div>${escapeHtml(metadata.donorName || 'Anonymous Supporter')}</div>
                                         </div>
                                     </td>
                                     <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
                                     <td><span class="type ${metadata.donationType === 'recurring' ? '' : 'one-time'}">${metadata.donationType || 'one-time'}</span></td>
                                     <td class="reference">${d.reference}</td>
-                                    <td>${donationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                                    <td>${displayDate}</td>
                                 </tr>
                                 `;
                             }).join('')}
@@ -3399,7 +3587,7 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
 
     res.send(html);
   } catch (err) {
-  next(new Error('Failed to load project dashboard'));
+  next(new AppError('Failed to load project dashboard', 500));
 }
 });
 
@@ -3414,7 +3602,7 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
     res.json(projects);
   } catch (err) {
-  next(new Error('Failed to load accessible projects'));
+  next(new DatabaseError('Failed to load accessible projects'));
 }
 });
 
@@ -3435,6 +3623,7 @@ app.use((err, req, res, next) => {
   console.error('❌ Uncaught error:', err);
   res.status(status).json(response);
 });
+
 
 // Then start the server AFTER middleware and routes are all set
 initializeDatabase()
