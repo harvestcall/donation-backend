@@ -115,7 +115,40 @@ const BCRYPT_COST = parseInt(process.env.BCRYPT_COST || '12', 10);
 const formatCurrency = require('./utils/formatCurrency');
 const Joi = require('joi');
 const helmet = require('helmet');
+const crypto = require('crypto');
 console.log('NODE_ENV:', process.env.NODE_ENV);
+
+// ✅ Paystack signature verification middleware
+const verifyPaystackWebhook = (req, res, next) => {
+  const secret = process.env.PAYSTACK_SECRET_KEY;
+  const signature = req.headers['x-paystack-signature'];
+
+  if (!signature) return res.status(403).send('Missing signature');
+
+  const hash = crypto.createHmac('sha512', secret)
+                     .update(JSON.stringify(req.body))
+                     .digest('hex');
+
+  if (hash !== signature) {
+    console.error('❌ Invalid Paystack signature');
+    return res.status(403).send('Invalid signature');
+  }
+
+  next();
+};
+
+// ✅ Joi schema for Paystack donation metadata
+const metadataSchema = Joi.object({
+  donorName: Joi.string().allow(''),
+  donationType: Joi.string().valid('one-time', 'recurring').default('one-time'),
+  staffId: Joi.string().pattern(/^\d+$/).allow(''),
+  projectId: Joi.string().pattern(/^\d+$/).allow('')
+});
+
+// ✅ UTC-safe date helper
+function createUTCDate(year, month, day) {
+  return new Date(Date.UTC(year, month, day));
+}
 
 
 // ✅ Define pgPool BEFORE using it
@@ -233,7 +266,7 @@ app.post('/initialize-payment', async (req, res, next) => {
 });
 
 // Webhook for payment verification
-app.post('/webhook', async (req, res, next) => {
+app.post('/webhook', verifyPaystackWebhook, async (req, res, next) => {
   try {
     const event = req.body;
 
@@ -241,14 +274,15 @@ app.post('/webhook', async (req, res, next) => {
       const paymentData = event.data;
 
       if (!paymentData.amount || paymentData.amount <= 0) {
-  console.warn('❌ Invalid or zero donation amount:', paymentData.amount);
-  return res.status(400).send('Invalid donation amount');
-}
+        console.warn('❌ Invalid or zero donation amount:', paymentData.amount);
+        return res.status(400).send('Invalid donation amount');
+      }
+
       const { error, value: validMetadata } = metadataSchema.validate(paymentData.metadata || {});
-if (error) {
-  console.error('❌ Invalid metadata in webhook:', error.details);
-  return res.status(400).send('Invalid metadata');
-}
+      if (error) {
+        console.error('❌ Invalid metadata in webhook:', error.details);
+        return res.status(400).send('Invalid metadata');
+      }
 
       console.log('✅ Verified Payment:', paymentData.reference);
       const { donorName, ...safeMetadata } = paymentData.metadata || {};
@@ -540,8 +574,7 @@ if (staffName && projectName) {
       console.log('📧 Beautiful thank-you email sent via SendGrid!');
     }
 
-    res.status(200).send('Webhook received');
-
+     res.status(200).send('Webhook received');
   } catch (error) {
     console.error('❌ Error processing webhook:', error.message);
     res.status(400).json({ error: error.message });
@@ -3387,8 +3420,20 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
 // Register global error handler FIRST
 app.use((err, req, res, next) => {
-  console.error('❌ Uncaught error:', err.message, err.stack);
-  res.status(500).json({ error: 'Internal server error' });
+  const status = err.status || 500;
+  const response = {
+    error: {
+      name: err.name,
+      message: err.message
+    }
+  };
+
+  if (process.env.NODE_ENV === 'development') {
+    response.error.stack = err.stack;
+  }
+
+  console.error('❌ Uncaught error:', err);
+  res.status(status).json(response);
 });
 
 // Then start the server AFTER middleware and routes are all set
