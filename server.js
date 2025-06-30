@@ -860,7 +860,7 @@ app.get('/admin/summary', requireAuth, async (req, res, next) => {
   try {
     const donations = await db('donations').orderBy('created_at', 'desc');
     const allStaff = await db('staff').select('id', 'name', 'active');
-    const allProjects = await db('projects').select('id', 'title');
+    const allProjects = await db('projects').select('id', 'name');
 
     const staffMap = new Map(allStaff.map(s => [s.id, s]));
     const projectMap = new Map(allProjects.map(p => [p.id, p]));
@@ -929,7 +929,7 @@ app.get('/admin/summary', requireAuth, async (req, res, next) => {
         if (!Number.isInteger(projectId)) continue;
         const project = projectMap.get(projectId);
         key = `project-${projectId}`;
-        label = `Project – ${project?.title || 'Unknown Project'}`;
+        label = `Project – ${project?.name || 'Unknown Project'}`;
         summary.totalProject += amount;
       }
 
