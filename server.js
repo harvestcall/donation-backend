@@ -256,11 +256,12 @@ if (error) {
 
       // Save to database
       await db('donations').insert({
-        email: paymentData.customer.email,
-        reference: paymentData.reference,
-        amount: paymentData.amount,
-        currency: paymentData.currency,
-        metadata: JSON.stringify(paymentData.metadata)
+      email: paymentData.customer.email,
+      reference: paymentData.reference,
+      amount: paymentData.amount,
+      currency: paymentData.currency,
+      metadata: JSON.stringify(paymentData.metadata),
+      created_at: new Date().toISOString() // ✅ ensures proper timestamp
       });
 
       console.log('✅ Donation saved to database!');
@@ -563,27 +564,37 @@ app.get('/admin/donations', async (req, res, next) => {
   try {
     const donations = await db('donations').orderBy('id', 'desc');
 
-let tableRows = donations.map(d => {
-  let metadata = {};
-  try {
-    metadata = typeof d.metadata === 'string'
-    ? JSON.parse(d.metadata)
-    : (d.metadata || {});
-  } catch (err) {
-    console.error('❌ Invalid metadata JSON:', d.metadata);
-  }
-  const donorName = escapeHtml(metadata.donorName || '-');
-  const purpose = escapeHtml(metadata.purpose || '-');
-  const donationType = escapeHtml(metadata.donationType || '-');
-  const email = escapeHtml(d.email || '-');
-  const reference = d.reference;
-  const referenceEscaped = escapeHtml(reference);
-  const currency = d.currency || 'NGN';
-  const amount = formatCurrency(d.amount, currency);
-  const status = 'success'; // Later: make dynamic if needed
-  const date = new Date(d.created_at || d.timestamp || Date.now()).toLocaleDateString('en-US', {
-        year: 'numeric', month: 'long', day: 'numeric'
-  });
+    let tableRows = donations.map(d => {
+      // ✅ Safe metadata parsing
+      let metadata = {};
+      try {
+        metadata = typeof d.metadata === 'string'
+          ? JSON.parse(d.metadata)
+          : (d.metadata || {});
+      } catch (err) {
+        console.error('❌ Invalid metadata JSON:', d.metadata);
+      }
+
+      // ✅ Escape HTML for all user-generated fields
+      const donorName = escapeHtml(metadata.donorName || '-');
+      const purpose = escapeHtml(metadata.purpose || '-');
+      const donationType = escapeHtml(metadata.donationType || '-');
+      const email = escapeHtml(d.email || '-');
+      const reference = d.reference;
+      const referenceEscaped = escapeHtml(reference);
+      const currency = d.currency || 'NGN';
+      const amount = formatCurrency(d.amount, currency);
+      const status = 'success'; // Later: make dynamic if needed
+
+      // ✅ Safe date handling with fallback
+      const rawDate = d.created_at || d.timestamp;
+      let displayDate = 'Unknown';
+      try {
+        displayDate = new Date(rawDate).toLocaleDateString('en-US', {
+          year: 'numeric', month: 'long', day: 'numeric',
+          timeZone: 'UTC'
+        });
+      } catch {}
 
       return `
         <tr>
@@ -594,7 +605,7 @@ let tableRows = donations.map(d => {
           <td>${purpose}</td>
           <td>${donationType}</td>
           <td>${referenceEscaped}</td>
-          <td>${date}</td>
+          <td>${displayDate}</td>
           <td><span class="status success">Success</span></td>
           <td class="actions">
             <button class="action-btn"><i class="fas fa-eye"></i></button>
@@ -604,7 +615,9 @@ let tableRows = donations.map(d => {
       `;
     }).join('');
 
-    res.send(`<!DOCTYPE html>
+    res.send(`
+      
+      <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -816,9 +829,10 @@ let tableRows = donations.map(d => {
   </script>
 </body>
 </html>`);
-  } catch (error) {
-  next(new Error('Error loading admin dashboard'));
-}
+  }  catch (error) {
+    console.error('❌ Error loading admin dashboard:', error.message);
+    next(new Error('Failed to load admin donations'));
+  }
 });
 
 // Get all active staff
@@ -847,23 +861,31 @@ app.get('/admin/summary', requireAuth, async (req, res, next) => {
     const donations = await db('donations').orderBy('created_at', 'desc');
     const allStaff = await db('staff').select('id', 'name', 'active');
     const allProjects = await db('projects').select('id', 'title');
+
     const staffMap = new Map(allStaff.map(s => [s.id, s]));
     const projectMap = new Map(allProjects.map(p => [p.id, p]));
 
+    const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
 
+    if (!/^\d{4}-\d{2}$/.test(targetMonth)) {
+      return res.status(400).send('Invalid month format');
+    }
 
-    // Parse target month from query or use current
-    const targetMonth = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
     const [year, month] = targetMonth.split('-').map(Number);
     const monthStart = new Date(Date.UTC(year, month - 1, 1));
-const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
-
-
+    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
     const filtered = donations.filter(d => {
-      const date = new Date(d.created_at || d.timestamp || Date.now());
-      return date >= monthStart && date <= monthEnd;
-    });
+  const rawDate = d.created_at || d.timestamp;
+  if (!rawDate) return false;
+
+  try {
+    const parsed = new Date(rawDate);
+    return parsed >= monthStart && parsed <= monthEnd;
+  } catch {
+    return false;
+  }
+});
 
     const summary = {
       total: 0,
@@ -876,7 +898,11 @@ const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
     for (const d of filtered) {
       let metadata = {};
       try {
-        metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+        if (typeof d.metadata === 'string') {
+          metadata = JSON.parse(d.metadata);
+        } else if (typeof d.metadata === 'object') {
+          metadata = d.metadata;
+        }
       } catch (err) {
         console.error('❌ Bad metadata:', d.metadata);
         continue;
@@ -889,33 +915,23 @@ const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
       let key = null;
       let label = '';
 
-     if (metadata.staffId) {
-  const staffId = Number(metadata.staffId);
-  if (!Number.isInteger(staffId)) {
-    console.warn('❌ Invalid staffId, skipping donation:', metadata.staffId);
-    continue;
-  }
-
-  const staff = staffMap.get(staffId);
-  if (staff && staff.active !== false) {
-    key = `staff-${staffId}`;
-    label = `Staff – ${staff.name || 'Unknown Staff'}`;
-    summary.totalStaff += amount;
-  }
-
-} else if (metadata.projectId) {
-  const projectId = Number(metadata.projectId);
-  if (!Number.isInteger(projectId)) {
-    console.warn('❌ Invalid projectId, skipping donation:', metadata.projectId);
-    continue;
-  }
-
-  const project = projectMap.get(projectId);
-  key = `project-${projectId}`;
-  label = `Project – ${project?.title || 'Unknown Project'}`;
-  summary.totalProject += amount;
-}
-
+      if (metadata.staffId) {
+        const staffId = Number(metadata.staffId);
+        if (!Number.isInteger(staffId)) continue;
+        const staff = staffMap.get(staffId);
+        if (staff && staff.active !== false) {
+          key = `staff-${staffId}`;
+          label = `Staff – ${staff.name || 'Unknown Staff'}`;
+          summary.totalStaff += amount;
+        }
+      } else if (metadata.projectId) {
+        const projectId = Number(metadata.projectId);
+        if (!Number.isInteger(projectId)) continue;
+        const project = projectMap.get(projectId);
+        key = `project-${projectId}`;
+        label = `Project – ${project?.title || 'Unknown Project'}`;
+        summary.totalProject += amount;
+      }
 
       if (key) {
         if (!summary.records[key]) summary.records[key] = { label, total: 0 };
@@ -926,16 +942,17 @@ const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
     const donorCount = summary.donors.size;
     const avgGift = donorCount ? (summary.total / donorCount).toFixed(2) : 0;
 
-    const current = new Date(year, month - 1);
+    const current = new Date(Date.UTC(year, month - 1));
     const prevMonth = new Date(current);
-    prevMonth.setMonth(current.getMonth() - 1);
+    prevMonth.setUTCMonth(current.getUTCMonth() - 1);
     const nextMonth = new Date(current);
-    nextMonth.setMonth(current.getMonth() + 1);
+    nextMonth.setUTCMonth(current.getUTCMonth() + 1);
 
-    const format = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const format = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
     const prev = format(prevMonth);
     const next = format(nextMonth);
-    const title = current.toLocaleString('default', { year: 'numeric', month: 'long' });
+    const title = current.toLocaleString('default', { year: 'numeric', month: 'long', timeZone: 'UTC' });
+
 // Generate beautiful HTML dashboard
     const html = `
     <!DOCTYPE html>
@@ -1386,12 +1403,11 @@ const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
     `;
 
     res.send(html);
-} catch (err) {
-  console.error('❌ Summary route error details:', err);
-  next(new Error('Failed to load summary'));
-}
+  } catch (err) {
+    console.error('❌ Summary route error:', err.message, err.stack);
+    next(err);
+  }
 });
-
 
 // View and manage staff accounts (/admin/staff)
 app.get('/admin/staff', requireAuth, async (req, res, next) => {
@@ -2090,16 +2106,24 @@ const monthKey = current.toLocaleString('default', {
 
     // Filter donations
     const filtered = donations.filter(d => {
-      try {
-        const metadata = typeof d.metadata === 'string' 
-          ? JSON.parse(d.metadata) 
-          : d.metadata || {};
-        return metadata.staffId == staffId;  // Use loose equality for type flexibility
-      } catch (err) {
-        console.error('❌ Bad metadata:', d.metadata);
-        return false;
-      }
-    });
+  try {
+    const rawDate = d.created_at || d.timestamp;
+    if (!rawDate) return false;
+
+    const parsedDate = new Date(rawDate);
+    if (!(parsedDate >= monthStart && parsedDate <= monthEnd)) return false;
+
+    const metadata = typeof d.metadata === 'string' 
+      ? JSON.parse(d.metadata) 
+      : d.metadata || {};
+
+    return metadata.staffId == staffId;
+  } catch (err) {
+    console.error('❌ Bad donation entry:', d);
+    return false;
+  }
+});
+
 
     // Calculate totals
     const totalAmount = filtered.reduce((sum, d) => sum + d.amount, 0) / 100;
@@ -2621,10 +2645,28 @@ const monthKey = current.toLocaleString('default', {
                         </thead>
                         <tbody>
                             ${filtered.map(d => {
-                                const metadata = typeof d.metadata === 'string' 
-                                    ? JSON.parse(d.metadata) 
-                                    : d.metadata || {};
-                                const donationDate = new Date(d.created_at);
+  // ✅ Safely parse metadata
+  let metadata = {};
+  try {
+    metadata = typeof d.metadata === 'string' 
+      ? JSON.parse(d.metadata) 
+      : d.metadata || {};
+  } catch (err) {
+    console.error('❌ Metadata parse error for donation ID', d.id);
+  }
+
+  // ✅ Safe and formatted date
+  const rawDate = d.created_at || d.timestamp;
+  let donationDate = 'Invalid Date';
+  try {
+    donationDate = new Date(rawDate).toLocaleDateString('en-US', {
+      year: 'numeric', month: 'long', day: 'numeric',
+      timeZone: 'UTC'
+    });
+  } catch {}
+
+  // Continue with rendering...
+
                                 return `<tr>
                                     <td>
                                         <div class="donor-name">
@@ -2746,14 +2788,19 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
       .orderBy('created_at', 'desc');
 
     const filtered = donations.filter(d => {
-      try {
-        const metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
-        return metadata.projectId === String(projectId);
-      } catch (err) {
-        console.error('❌ Bad metadata:', d.metadata);
-        return false;
-      }
-    });
+  try {
+    const metadata = typeof d.metadata === 'string'
+      ? JSON.parse(d.metadata)
+      : d.metadata || {};
+
+    // Coerce both sides to string for safe comparison
+    return String(metadata.projectId) === String(projectId);
+  } catch (err) {
+    console.error('❌ Bad metadata in donation ID', d.id, ':', d.metadata);
+    return false;
+  }
+});
+
 
     // Calculate totals
     const totalAmount = filtered.reduce((sum, d) => sum + d.amount, 0) / 100;
@@ -3262,8 +3309,21 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
                         </thead>
                         <tbody>
                             ${filtered.map(d => {
-                                const metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
-                                const donationDate = new Date(d.created_at);
+  let metadata = {};
+  try {
+    metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+  } catch (err) {
+    console.error('❌ Metadata parse error for donation:', d.id);
+  }
+
+  const rawDate = d.created_at || d.timestamp;
+  let displayDate = 'Invalid Date';
+  try {
+    displayDate = new Date(rawDate).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      timeZone: 'UTC'
+    });
+  } catch {}
                                 return `
                                 <tr>
                                     <td>
@@ -3327,8 +3387,8 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
 // Register global error handler FIRST
 app.use((err, req, res, next) => {
-  console.error('❌ Uncaught error:', err.stack);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  console.error('❌ Uncaught error:', err.message, err.stack);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // Then start the server AFTER middleware and routes are all set
