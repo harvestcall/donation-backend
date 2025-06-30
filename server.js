@@ -1,10 +1,52 @@
-// Load environment variables
+// ✅ Load environment variables
 require('dotenv').config();
 
-// Basic Auth Middleware
+// ✅ Core dependencies and modules
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const axios = require('axios');
+const sgMail = require('@sendgrid/mail');
+const { Pool } = require('pg');
+const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
+const bcrypt = require('bcryptjs');
+const helmet = require('helmet');
+const crypto = require('crypto');
+const Joi = require('joi');
+const { param, body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
+const apicache = require('apicache');
+const cache = apicache.middleware;
+const formatCurrency = require('./utils/formatCurrency');
+
+const app = express();
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
+// ✅ Database connection
+const db = require('./db');
+console.log("🛠 Using DB Connection:", db.client.config.connection);
+console.log("🌍 Running in environment:", process.env.NODE_ENV);
+
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+// ✅ Escape HTML utility (for XSS protection)
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, tag => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[tag]));
+}
+
+// ✅ Basic Auth Middleware
 const requireAuth = (req, res, next) => {
   const auth = req.headers.authorization;
-
   if (!auth || !auth.startsWith('Basic ')) {
     res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
     return res.status(401).send('Authentication required.');
@@ -12,53 +54,32 @@ const requireAuth = (req, res, next) => {
   const base64Credentials = auth.split(' ')[1];
   const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
   const [username, password] = credentials.split(':');
-
   if (
     username === process.env.DASHBOARD_USER &&
     password === process.env.DASHBOARD_PASS
-  ) {
-    return next(); // authenticated!
-  }
-
+  ) return next();
   res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
   return res.status(401).send('Access denied');
 };
 
-
-// Helper: Fetch name of staff or project
+// ✅ Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
   console.log(`🔍 Looking up ${type} ID: ${id}`);
-  
-  // Convert to number if it's a string
   const numericId = typeof id === 'string' ? parseInt(id) : id;
-  
-  if (typeof numericId !== 'number' || isNaN(numericId)) {
-  console.log(`❌ Invalid ID: ${id} (Not a number)`);
-  return null;
-}
-if (numericId < 0) {
-  console.log(`❌ Invalid ID: ${id} (Negative value)`);
-  return null;
-}
-
-
+  if (typeof numericId !== 'number' || isNaN(numericId) || numericId <= 0) {
+    console.log(`❌ Invalid ID: ${id}`);
+    return null;
+  }
   try {
-    console.log(`🔍 Querying database for ${type} with ID: ${numericId}`);
-    
-    // Get table name (use explicit name for safety)
     const table = type === 'staff' ? 'staff' : 'projects';
     const result = await db(table).where('id', numericId).first();
-    
     if (result) {
       console.log(`✅ Found ${type}:`, result);
       return result.name;
     } else {
-      console.log(`❌ No ${type} found with ID: ${numericId}`);
-      
-      // List all records to help debug
       const allRecords = await db(table).select('*');
+      console.log(`❌ No ${type} found with ID: ${numericId}`);
       console.log(`📋 All ${type} records:`, allRecords);
-      
       return null;
     }
   } catch (err) {
@@ -67,295 +88,17 @@ if (numericId < 0) {
   }
 }
 
-// Load database connection
-const db = require('./db');
-console.log("🛠 Using DB Connection:", db.client.config.connection);
-console.log("🌍 Running in environment:", process.env.NODE_ENV);
-
-
-// Run migration automatically (creates donations table if missing)
-// ✅ SAFE Initialization - Add this instead
+// ✅ Database initialization
 async function initializeDatabase() {
   try {
     await db.migrate.latest();
     console.log('📦 Migrations completed');
-    
-    // Only log existing staff (no seeding)
     const staff = await db('staff').select('*');
     console.log('👥 Staff records:', staff);
   } catch (err) {
     console.error('❌ Database initialization error:', err.message);
   }
 }
-
-// 🧪 Temporary Tests for getDisplayName()
-
-getDisplayName('staff', 0, db).then(name => console.log('Staff 0:', name));
-getDisplayName('staff', 1, db).then(name => console.log('Staff 1:', name));
-
-getDisplayName('staff', null, db).then(name => console.log('Null:', name));
-getDisplayName('staff', undefined, db).then(name => console.log('Undefined:', name));
-getDisplayName('staff', 'abc', db).then(name => console.log('String "abc":', name));
-getDisplayName('staff', -1, db).then(name => console.log('Negative ID:', name));
-
-
-
-// Import required modules
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const axios = require('axios');
-const sgMail = require('@sendgrid/mail');
-const { Pool } = require('pg');
-const app = express();
-const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
-const bcrypt = require('bcryptjs');
-const BCRYPT_COST = parseInt(process.env.BCRYPT_COST || '12', 10);
-const formatCurrency = require('./utils/formatCurrency');
-const Joi = require('joi');
-const helmet = require('helmet');
-const crypto = require('crypto');
-const { param, body, validationResult } = require('express-validator');
-const rateLimit = require('express-rate-limit');
-const apicache = require('apicache');
-const cache = apicache.middleware;
-console.log('NODE_ENV:', process.env.NODE_ENV);
-
-// ✅ Paystack signature verification middleware
-const verifyPaystackWebhook = (req, res, next) => {
-  const secret = process.env.PAYSTACK_SECRET_KEY;
-  const signature = req.headers['x-paystack-signature'];
-
-  if (!signature) return res.status(403).send('Missing signature');
-
-  const hash = crypto.createHmac('sha512', secret)
-                     .update(JSON.stringify(req.body))
-                     .digest('hex');
-
-  if (hash !== signature) {
-    console.error('❌ Invalid Paystack signature');
-    return res.status(403).send('Invalid signature');
-  }
-
-  next();
-};
-
-
-
-// ✅ Joi schema for Paystack donation metadata
-const metadataSchema = Joi.object({
-  donorName: Joi.string().allow(''),
-  donationType: Joi.string().valid('one-time', 'recurring').default('one-time'),
-  staffId: Joi.string().pattern(/^\d+$/).allow(''),
-  projectId: Joi.string().pattern(/^\d+$/).allow('')
-});
-
-
-// 🔐 Protect login: 5 attempts per 10 minutes per IP 
-const loginLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 5,
-  message: 'Too many login attempts. Please try again in 10 minutes.',
-  standardHeaders: true,
-  legacyHeaders: false,
-   handler: (req, res, next, options) => {
-  console.warn(`⛔ Rate limit exceeded on ${req.originalUrl} from ${req.ip}`);
-  
-  if (req.headers.accept?.includes('application/json')) {
-    res.status(options.statusCode).json({
-      error: {
-        message: options.message,
-        retryAfterSeconds: Math.floor(options.windowMs / 1000)
-      }
-    });
-  } else {
-    res.status(options.statusCode).send(`
-      <html><body>
-        <h2>Too Many Requests</h2>
-        <p>${options.message}</p>
-      </body></html>
-    `);
-  }
-
-  }
-});
-
-// 💳 Protect initialize-payment: 20 attempts per 15 minutes per IP
-const paymentLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: 'Too many payment attempts. Please wait and try again.',
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res, next, options) => {
-  console.warn(`⛔ Rate limit exceeded on ${req.originalUrl} from ${req.ip}`);
-  
-  if (req.headers.accept?.includes('application/json')) {
-    res.status(options.statusCode).json({
-      error: {
-        message: options.message,
-        retryAfterSeconds: Math.floor(options.windowMs / 1000)
-      }
-    });
-  } else {
-    res.status(options.statusCode).send(`
-      <html><body>
-        <h2>Too Many Requests</h2>
-        <p>${options.message}</p>
-      </body></html>
-    `);
-  }
-
-  }
-});
-
-// 📩 Protect webhook (light limit to reduce abuse)
-const webhookLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000,
-  max: 10,
-  message: 'Too many webhook requests. Calm down.',
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res, next, options) => {
-  console.warn(`⛔ Rate limit exceeded on ${req.originalUrl} from ${req.ip}`);
-  
-  if (req.headers.accept?.includes('application/json')) {
-    res.status(options.statusCode).json({
-      error: {
-        message: options.message,
-        retryAfterSeconds: Math.floor(options.windowMs / 1000)
-      }
-    });
-  } else {
-    res.status(options.statusCode).send(`
-      <html><body>
-        <h2>Too Many Requests</h2>
-        <p>${options.message}</p>
-      </body></html>
-    `);
-  }
-
-  }
-});
-
-class AppError extends Error {
-  constructor(message, status = 500) {
-    super(message);
-    this.name = this.constructor.name;
-    this.status = status;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
-
-class ValidationError extends AppError {
-  constructor(message = 'Invalid input') {
-    super(message, 400);
-  }
-}
-
-class NotFoundError extends AppError {
-  constructor(message = 'Resource not found') {
-    super(message, 404);
-  }
-}
-
-class DatabaseError extends AppError {
-  constructor(message = 'Database error') {
-    super(message, 500);
-  }
-}
-
-
-// ✅ UTC-safe date helper
-function createUTCDate(year, month, day) {
-  return new Date(Date.UTC(year, month, day));
-}
-
-// Reusable validation middleware
-function validateRequest(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(422).json({ errors: errors.array() });
-  }
-  next();
-}
-
-// ✅ Define pgPool BEFORE using it
-const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // important for Render!
-});
-
-// ✅ Trust first proxy (important for Render, Heroku, etc.)
-app.set('trust proxy', 1);
-
-// ✅ Session middleware
-if (!process.env.SESSION_SECRET) {
-  throw new AppError('❌ SESSION_SECRET is required but not set in the environment!', 500);
-}
-app.use(session({
-  store: new pgSession({
-    pool: pgPool,
-    tableName: 'session',
-  }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    sameSite: 'lax',
-    // domain: process.env.COOKIE_DOMAIN || 'localhost' // optional
-  }
-}));
-
-
-app.use(express.urlencoded({ extended: true }));
-
-// Helment
-app.use(helmet({
-  contentSecurityPolicy: {
-    useDefaults: true,
-    directives: {
-      "default-src": ["'self'"],
-      "style-src": ["'self'", "https://fonts.googleapis.com"],
-      "font-src": ["'self'", "https://fonts.gstatic.com"],
-      "script-src": ["'self'", "https://cdnjs.cloudflare.com"],
-      "img-src": ["'self'", "data:"],
-      "connect-src": ["'self'"]
-    }
-  }
-}));
-
-
-// Set up SendGrid
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-// Middleware setup
-app.use(bodyParser.json());
-app.use(cors());
-
-if (process.env.NODE_ENV !== 'production') {
-  app.get('/debug/staff', requireAuth, async (req, res, next) => {
-    try {
-      const all = await db('staff').select('*');
-      res.json(all);
-    } catch (err) {
-      next(new DatabaseError('Failed to fetch debug staff data'));
-    }
-  });
-
-  // --- Sanitize any :id route parameters globally ---
-app.param('id', (req, res, next, id) => {
-  const parsedId = parseInt(id);
-  if (isNaN(parsedId) || parsedId < 0) {
-    return res.status(400).send('Invalid ID parameter');
-  }
-  req.sanitizedId = parsedId;
-  next();
-});
 
 
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
@@ -366,7 +109,7 @@ app.param('id', (req, res, next, id) => {
       next(new DatabaseError('Failed to fetch debug donation data'));
     }
   });
-}
+
 
 
 // Payment initialization endpoint
@@ -734,16 +477,7 @@ if (staffName && projectName) {
 });
 
 
-// Set port
-const PORT = process.env.PORT || 5000;
-function escapeHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+
 
 app.get('/admin/donations', async (req, res, next) => {
   try {
@@ -1043,104 +777,103 @@ app.get('/projects', async (req, res, next) => {
 // Admin Summary Dashboard
 app.get('/admin/summary',
   requireAuth,
-  cache('5 minutes'),  // ⬅️ Caches response for 5 minutes
+  cache('5 minutes'),
   async (req, res, next) => {
     try {
-    const donations = await db('donations').orderBy('created_at', 'desc');
-    const allStaff = await db('staff').select('id', 'name', 'active');
-    const allProjects = await db('projects').select('id', 'name');
+      const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
+      
+      // Validate month format
+      if (!/^\d{4}-\d{2}$/.test(targetMonth)) {
+        return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid month format' } });
+      }
 
-    const staffMap = new Map(allStaff.map(s => [s.id, s]));
-    const projectMap = new Map(allProjects.map(p => [p.id, p]));
+      const [year, month] = targetMonth.split('-').map(Number);
+      const monthStart = new Date(Date.UTC(year, month - 1, 1));
+      const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
-    const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
+      // PARALLEL DATABASE QUERIES
+      const [allStaff, allProjects, aggregatedData, rawDonations] = await Promise.all([
+        db('staff').select('id', 'name', 'active'),
+        db('projects').select('id', 'name'),
+        
+        // Aggregated summary data
+        db('donations')
+          .select(
+            db.raw("(metadata->>'staffId')::integer as staff_id"),
+            db.raw("(metadata->>'projectId')::integer as project_id"),
+            db.raw('SUM(amount) as total_amount'),
+            db.raw('COUNT(DISTINCT email) as donor_count')
+          )
+          .whereBetween('created_at', [monthStart, monthEnd])
+          .groupBy('staff_id', 'project_id'),
+        
+        // Raw donations just for donor emails
+        db('donations')
+          .select('email')
+          .whereBetween('created_at', [monthStart, monthEnd])
+          .distinct('email')
+      ]);
 
-    if (!/^\d{4}-\d{2}$/.test(targetMonth)) {
-      return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid month format' } });
-    }
+      // Create lookup maps
+      const staffMap = new Map(allStaff.map(s => [s.id, s]));
+      const projectMap = new Map(allProjects.map(p => [p.id, p]));
 
-    const [year, month] = targetMonth.split('-').map(Number);
-    const monthStart = new Date(Date.UTC(year, month - 1, 1));
-    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+      // Build summary from aggregated data
+      const summary = {
+        total: 0,
+        totalStaff: 0,
+        totalProject: 0,
+        donors: new Set(rawDonations.map(d => d.email)),
+        records: {}
+      };
 
-    const filtered = donations.filter(d => {
-  const rawDate = d.created_at || d.timestamp;
-  if (!rawDate) return false;
+      for (const row of aggregatedData) {
+        const amount = row.total_amount / 100;
+        summary.total += amount;
 
-  try {
-    const parsed = new Date(rawDate);
-    return parsed >= monthStart && parsed <= monthEnd;
-  } catch {
-    return false;
-  }
-});
-
-    const summary = {
-      total: 0,
-      totalStaff: 0,
-      totalProject: 0,
-      donors: new Set(),
-      records: {}
-    };
-
-    for (const d of filtered) {
-      let metadata = {};
-      try {
-        if (typeof d.metadata === 'string') {
-          metadata = JSON.parse(d.metadata);
-        } else if (typeof d.metadata === 'object') {
-          metadata = d.metadata;
+        // Handle staff donations (priority over projects)
+        if (row.staff_id && staffMap.has(row.staff_id)) {
+          const staff = staffMap.get(row.staff_id);
+          if (staff.active) {
+            summary.totalStaff += amount;
+            const key = `staff-${staff.id}`;
+            summary.records[key] = summary.records[key] || {
+              label: `Staff – ${staff.name}`,
+              total: 0
+            };
+            summary.records[key].total += amount;
+          }
         }
-      } catch (err) {
-        console.error('❌ Bad metadata:', d.metadata);
-        continue;
-      }
-
-      const amount = d.amount / 100;
-      summary.total += amount;
-      summary.donors.add(d.email);
-
-      let key = null;
-      let label = '';
-
-      if (metadata.staffId) {
-        const staffId = Number(metadata.staffId);
-        if (!Number.isInteger(staffId)) continue;
-        const staff = staffMap.get(staffId);
-        if (staff && staff.active !== false) {
-          key = `staff-${staffId}`;
-          label = `Staff – ${staff.name || 'Unknown Staff'}`;
-          summary.totalStaff += amount;
+        // Handle project donations (only if no staff ID)
+        else if (row.project_id && projectMap.has(row.project_id)) {
+          summary.totalProject += amount;
+          const project = projectMap.get(row.project_id);
+          const key = `project-${project.id}`;
+          summary.records[key] = summary.records[key] || {
+            label: `Project – ${project.name}`,
+            total: 0
+          };
+          summary.records[key].total += amount;
         }
-      } else if (metadata.projectId) {
-        const projectId = Number(metadata.projectId);
-        if (!Number.isInteger(projectId)) continue;
-        const project = projectMap.get(projectId);
-        key = `project-${projectId}`;
-        label = `Project – ${project?.name || 'Unknown Project'}`;
-        summary.totalProject += amount;
       }
 
-      if (key) {
-        if (!summary.records[key]) summary.records[key] = { label, total: 0 };
-        summary.records[key].total += amount;
-      }
-    }
+      const donorCount = summary.donors.size;
+      const avgGift = donorCount ? (summary.total / donorCount).toFixed(2) : 0;
 
-    const donorCount = summary.donors.size;
-    const avgGift = donorCount ? (summary.total / donorCount).toFixed(2) : 0;
+      const current = new Date(Date.UTC(year, month - 1));
+      const prevMonth = new Date(current);
+      prevMonth.setUTCMonth(current.getUTCMonth() - 1);
+      const nextMonth = new Date(current);
+      nextMonth.setUTCMonth(current.getUTCMonth() + 1);
 
-    const current = new Date(Date.UTC(year, month - 1));
-    const prevMonth = new Date(current);
-    prevMonth.setUTCMonth(current.getUTCMonth() - 1);
-    const nextMonth = new Date(current);
-    nextMonth.setUTCMonth(current.getUTCMonth() + 1);
-
-    const format = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-    const prev = format(prevMonth);
-    const next = format(nextMonth);
-    const title = current.toLocaleString('default', { year: 'numeric', month: 'long', timeZone: 'UTC' });
-
+      const format = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+      const prev = format(prevMonth);
+      const next = format(nextMonth);
+      const title = current.toLocaleString('default', { 
+        year: 'numeric', 
+        month: 'long', 
+        timeZone: 'UTC' 
+      });
 // Generate beautiful HTML dashboard
     const html = `
     <!DOCTYPE html>
@@ -2321,9 +2054,11 @@ const monthKey = current.toLocaleString('default', {
     monthEnd.setHours(23, 59, 59);
 
     // Get donations
-    const donations = await db('donations')
-      .whereBetween('created_at', [monthStart, monthEnd])
-      .orderBy('created_at', 'desc');
+    // ✅ Solution: Push filtering to the database
+const donations = await db('donations')
+  .where('metadata->>staffId', staffId.toString())  // Direct DB filter
+  .whereBetween('created_at', [monthStart, monthEnd])
+  .orderBy('created_at', 'desc');
 
     // Filter donations
     const filtered = donations.filter(d => {
@@ -3006,6 +2741,7 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
 
     const donations = await db('donations')
       .whereBetween('created_at', [monthStart.toISOString(), monthEnd.toISOString()])
+      .andWhereRaw(`metadata->>'projectId' = ?`, [projectId.toString()])
       .orderBy('created_at', 'desc');
 
     const filtered = donations.filter(d => {
@@ -3606,7 +3342,7 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 }
 });
 
-// Register global error handler FIRST
+// ✅ Global error handler
 app.use((err, req, res, next) => {
   const status = err.status || 500;
   const response = {
@@ -3615,24 +3351,73 @@ app.use((err, req, res, next) => {
       message: err.message
     }
   };
-
   if (process.env.NODE_ENV === 'development') {
     response.error.stack = err.stack;
   }
-
   console.error('❌ Uncaught error:', err);
   res.status(status).json(response);
 });
 
+// ✅ Index maintenance logic with locking
+let isMaintenanceRunning = false;
+async function runIndexMaintenance() {
+  if (process.env.NODE_ENV === 'production') {
+    if (isMaintenanceRunning) return;
+    isMaintenanceRunning = true;
+    try {
+      console.log('🔄 Starting index maintenance...');
+      await db.raw('ANALYZE donations');
+      console.log('✅ ANALYZE donations completed');
+      const utcHours = new Date().getUTCHours();
+      if (utcHours >= 1 && utcHours <= 4) {
+        await db.raw('REINDEX TABLE donations');
+        console.log('🔄 REINDEX donations completed');
+      }
+    } catch (err) {
+      console.error('❌ Index maintenance failed:', err.message);
+      if (process.env.SENDGRID_API_KEY && process.env.ADMIN_EMAIL) {
+        await sgMail.send({
+          to: process.env.ADMIN_EMAIL,
+          from: 'server@harvestcallafrica.org',
+          subject: 'Index Maintenance Failed',
+          text: `Error: ${err.message}`
+        });
+      }
+    } finally {
+      isMaintenanceRunning = false;
+    }
+  }
+}
 
-// Then start the server AFTER middleware and routes are all set
-initializeDatabase()
-  .then(() => {
+// ✅ Server startup
+const PORT = process.env.PORT || 5000;
+
+async function startServer() {
+  try {
+    console.log('⏳ Initializing database...');
+    await initializeDatabase();
+    console.log('🔧 Running initial index maintenance...');
+    await runIndexMaintenance();
+    console.log('🚀 Starting Express server...');
     app.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
+      console.log(`✅ Server is running on port ${PORT}`);
+      setInterval(() => {
+        const now = new Date();
+        if (now.getUTCDay() === 0 && now.getUTCHours() === 2) {
+          runIndexMaintenance();
+        }
+      }, 60 * 60 * 1000);
     });
-  })
-  .catch(err => {
-    console.error('❌ Failed to initialize database:', err);
+  } catch (err) {
+    console.error('❌ Failed to start server:', err);
     process.exit(1);
-  });
+  }
+}
+
+process.on('SIGINT', async () => {
+  console.log('🛑 Shutting down gracefully...');
+  await db.destroy();
+  process.exit(0);
+});
+
+startServer();
