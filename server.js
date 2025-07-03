@@ -23,6 +23,13 @@ const formatCurrency = require('./utils/formatCurrency');
 const app = express();
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
+app.use(bodyParser.urlencoded({ extended: true })); // Handle form submissions
+app.use(bodyParser.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf; // Preserve raw body for webhook verification
+  }
+}));
+
 // ✅ Database connection
 const db = require('./db');
 console.log("🛠 Using DB Connection:", db.client.config.connection);
@@ -69,9 +76,11 @@ const validateRequest = (req, res, next) => {
 
 // ✅ Paystack webhook verification
 const verifyPaystackWebhook = (req, res, next) => {
+  // Use raw body instead of JSON.stringify(req.body)
   const hash = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
-                     .update(JSON.stringify(req.body))
+                     .update(req.rawBody) // CHANGED THIS LINE
                      .digest('hex');
+  
   if (hash === req.headers['x-paystack-signature']) {
     return next();
   }
