@@ -33,6 +33,37 @@ const pgPool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// ✅ Rate Limiters
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50,
+  message: 'Too many payment requests from this IP, please try again later'
+});
+
+const webhookLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 100,
+  message: 'Too many webhook requests'
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: 'Too many login attempts, please try again later'
+});
+
+// ✅ Paystack webhook verification
+const verifyPaystackWebhook = (req, res, next) => {
+  const hash = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
+                     .update(JSON.stringify(req.body))
+                     .digest('hex');
+  if (hash === req.headers['x-paystack-signature']) {
+    return next();
+  }
+  res.status(401).send('Unauthorized');
+};
+
+
 // ✅ Escape HTML utility (for XSS protection)
 function escapeHtml(str) {
   return str.replace(/[&<>"']/g, tag => ({
