@@ -83,10 +83,7 @@ app.use(session({
 }
 }));
 
-const {
-  generateToken,
-  doubleCsrfProtection,
-} = doubleCsrf({
+const doubleCsrfUtilities = doubleCsrf({
   getSecret: () => process.env.SESSION_SECRET,
   cookieName: "__Host-hc-csrf-token",
   cookieOptions: {
@@ -96,9 +93,11 @@ const {
   },
 });
 
+const { generateToken, doubleCsrfProtection } = doubleCsrfUtilities;
+
 app.use(doubleCsrfProtection);
 app.use((req, res, next) => {
-  res.locals.csrfToken = generateToken(res, req);
+  res.locals.csrfToken = generateToken(req, res);
   next();
 });
 
