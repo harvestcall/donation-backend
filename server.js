@@ -19,9 +19,36 @@ const rateLimit = require('express-rate-limit');
 const apicache = require('apicache');
 const cache = apicache.middleware;
 const formatCurrency = require('./utils/formatCurrency');
+const logger = require('./utils/logger');
+const { notifyAdmin } = require('./utils/alerts');
+
 
 const app = express();
-console.log('NODE_ENV:', process.env.NODE_ENV);
+app.set('trust proxy', true);  // Trust Render.com proxies
+logger.info('NODE_ENV:', process.env.NODE_ENV);
+if (!process.env.SESSION_SECRET) {
+  throw new Error('❌ SESSION_SECRET is missing in .env');
+}
+
+
+const BCRYPT_COST = process.env.BCRYPT_COST || 8;
+
+// Add after bodyParser middleware:
+app.use((req, res, next) => {
+  if (req.params.id) {
+    const id = parseInt(req.params.id);
+    req.sanitizedId = isNaN(id) ? null : id;
+  }
+  next();
+});
+
+// Add after Joi require:
+const metadataSchema = Joi.object({
+  staffId: Joi.string().optional(),
+  projectId: Joi.string().optional(),
+  donorName: Joi.string().optional(),
+  donationType: Joi.string().valid('one-time', 'recurring').optional()
+});
 
 app.use(bodyParser.urlencoded({ extended: true })); // Handle form submissions
 app.use(bodyParser.json({
@@ -32,13 +59,29 @@ app.use(bodyParser.json({
 
 // ✅ Database connection
 const db = require('./db');
-console.log("🛠 Using DB Connection:", db.client.config.connection);
-console.log("🌍 Running in environment:", process.env.NODE_ENV);
+logger.info("🛠 Using DB Connection:", db.client.config.connection);
+logger.info("🌍 Running in environment:", process.env.NODE_ENV);
 
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+// MISSING: Session middleware configuration
+app.use(session({
+  store: new pgSession({ pool: pgPool, tableName: 'session' }),
+  secret: process.env.SESSION_SECRET, // Must be set in .env
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  }
+}));
+
+const csrf = require('csurf');
+app.use(csrf());
+
 
 // ✅ Rate Limiters
 const paymentLimiter = rateLimit({
@@ -119,27 +162,49 @@ const requireAuth = (req, res, next) => {
 
 // ✅ Helper: Fetch name of staff or project
 async function getDisplayName(type, id, db) {
-  console.log(`🔍 Looking up ${type} ID: ${id}`);
+  logger.info(`🔍 Looking up ${type} ID: ${id}`);
   const numericId = typeof id === 'string' ? parseInt(id) : id;
   if (typeof numericId !== 'number' || isNaN(numericId) || numericId <= 0) {
-    console.log(`❌ Invalid ID: ${id}`);
+    logger.info(`❌ Invalid ID: ${id}`);
     return null;
   }
   try {
     const table = type === 'staff' ? 'staff' : 'projects';
     const result = await db(table).where('id', numericId).first();
     if (result) {
-      console.log(`✅ Found ${type}:`, result);
+      logger.info(`✅ Found ${type}:`, result);
       return result.name;
     } else {
       const allRecords = await db(table).select('*');
-      console.log(`❌ No ${type} found with ID: ${numericId}`);
-      console.log(`📋 All ${type} records:`, allRecords);
+      logger.info(`❌ No ${type} found with ID: ${numericId}`);
+      logger.info(`📋 All ${type} records:`, allRecords);
       return null;
     }
   } catch (err) {
-    console.error(`❌ Database error:`, err);
+    logger.error(`❌ Database error:`, err);
     return null;
+  }
+}
+
+// ✅ Custom Error Classes
+class AppError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = this.constructor.name;
+    this.status = status || 500;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+class DatabaseError extends AppError {
+  constructor(message) {
+    super(message || 'Database operation failed', 500);
+  }
+}
+
+class NotFoundError extends AppError {
+  constructor(message) {
+    super(message || 'Resource not found', 404);
   }
 }
 
@@ -147,11 +212,11 @@ async function getDisplayName(type, id, db) {
 async function initializeDatabase() {
   try {
     await db.migrate.latest();
-    console.log('📦 Migrations completed');
+    logger.info('📦 Migrations completed');
     const staff = await db('staff').select('*');
-    console.log('👥 Staff records:', staff);
+    logger.info('👥 Staff records:', staff);
   } catch (err) {
-    console.error('❌ Database initialization error:', err.message);
+    logger.error('❌ Database initialization error:', err.message);
   }
 }
 
@@ -201,7 +266,7 @@ app.post('/initialize-payment',
     });
 
   } catch (error) {
-    console.error(error.response?.data || error.message);
+    logger.error(error.response?.data || error.message);
     next(new DatabaseError('Payment initialization failed'));
   }
 });
@@ -218,7 +283,7 @@ app.post('/webhook',
       const paymentData = event.data;
 
       if (!paymentData.amount || paymentData.amount <= 0) {
-        console.warn('❌ Invalid or zero donation amount:', paymentData.amount);
+        logger.warn('❌ Invalid or zero donation amount:', paymentData.amount);
         return res.status(400).json({
   error: {
     name: 'ValidationError',
@@ -230,13 +295,13 @@ app.post('/webhook',
 
       const { error, value: validMetadata } = metadataSchema.validate(paymentData.metadata || {});
       if (error) {
-        console.error('❌ Invalid metadata in webhook:', error.details);
+        logger.error('❌ Invalid metadata in webhook:', error.details);
         return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid metadata' } });
       }
 
-      console.log('✅ Verified Payment:', paymentData.reference);
+      logger.info('✅ Verified Payment:', paymentData.reference);
       const { donorName, ...safeMetadata } = paymentData.metadata || {};
-      console.log('🔎 Payment Metadata:', safeMetadata);
+      logger.info('🔎 Payment Metadata:', safeMetadata);
 
       // Save to database
       await db('donations').insert({
@@ -248,7 +313,7 @@ app.post('/webhook',
       created_at: new Date().toISOString() // ✅ ensures proper timestamp
       });
 
-      console.log('✅ Donation saved to database!');
+      logger.info('✅ Donation saved to database!');
 
       // Initialize variables with default values
       let purposeText = 'General Donation';
@@ -289,10 +354,10 @@ if (staffName && projectName) {
 } else if (projectName) {
   purposeText = `Project Support -- ${projectName}`;
 } else {
-  console.warn('❌ No valid staffId or projectId in metadata.');
+  logger.warn('❌ No valid staffId or projectId in metadata.');
 }
 
-      console.log('Purpose:', purposeText);
+      logger.info('Purpose:', purposeText);
 
       // Send beautiful thank-you email
       const donorFirstName = validMetadata.donorName?.split(' ')[0] || 'Friend';
@@ -521,12 +586,12 @@ if (staffName && projectName) {
         `
       });
 
-      console.log('📧 Beautiful thank-you email sent via SendGrid!');
+      logger.info('📧 Beautiful thank-you email sent via SendGrid!');
     }
 
      res.status(200).send('Webhook received');
   } catch (error) {
-    console.error('❌ Error processing webhook:', error.message);
+    logger.error('❌ Error processing webhook:', error.message);
     res.status(400).json({ error: error.message });
   }
 });
@@ -546,7 +611,7 @@ app.get('/admin/donations', async (req, res, next) => {
           ? JSON.parse(d.metadata)
           : (d.metadata || {});
       } catch (err) {
-        console.error('❌ Invalid metadata JSON:', d.metadata);
+        logger.error('❌ Invalid metadata JSON:', d.metadata);
       }
 
       // ✅ Escape HTML for all user-generated fields
@@ -564,15 +629,13 @@ app.get('/admin/donations', async (req, res, next) => {
       const rawDate = d.created_at || d.timestamp;
       let displayDate = 'Unknown';
       try {
-        displayDate = new Date(rawDate).toLocaleDateString('en-US', {
-          year: 'numeric', month: 'long', day: 'numeric',
-          timeZone: 'UTC'
+        displayDate = new Date(rawDate).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric'
         });
       } catch {}
 
       return `
         <tr>
-          <td>${donorName}</td>
+          <td>${escapeHtml(donorName)}</td>
           <td>${email}</td>
           <td>${amount}</td>
           <td>${currency}</td>
@@ -804,7 +867,7 @@ app.get('/admin/donations', async (req, res, next) => {
 </body>
 </html>`);
   }  catch (error) {
-    console.error('❌ Error loading admin dashboard:', error.message);
+    logger.error('❌ Error loading admin dashboard:', error.message);
     next(new DatabaseError('Failed to load admin donations'));
   }
 });
@@ -836,13 +899,14 @@ app.get('/admin/summary',
   async (req, res, next) => {
     try {
       const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
+      const [year, month] = targetMonth.split('-').map(Number);
+      const current = new Date(Date.UTC(year, month - 1, 1));
       
       // Validate month format
       if (!/^\d{4}-\d{2}$/.test(targetMonth)) {
         return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid month format' } });
       }
 
-      const [year, month] = targetMonth.split('-').map(Number);
       const monthStart = new Date(Date.UTC(year, month - 1, 1));
       const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
@@ -854,13 +918,13 @@ app.get('/admin/summary',
         // Aggregated summary data
         db('donations')
           .select(
-            db.raw("(metadata->>'staffId')::integer as staff_id"),
-            db.raw("(metadata->>'projectId')::integer as project_id"),
+            db.raw("CASE WHEN metadata->>'staffId' ~ '^\\d+$' THEN (metadata->>'staffId')::integer ELSE NULL END as staff_id"),
+            db.raw("CASE WHEN metadata->>'projectId' ~ '^\\d+$' THEN (metadata->>'projectId')::integer ELSE NULL END as project_id"),
             db.raw('SUM(amount) as total_amount'),
             db.raw('COUNT(DISTINCT email) as donor_count')
-          )
-          .whereBetween('created_at', [monthStart, monthEnd])
-          .groupBy('staff_id', 'project_id'),
+            )
+            .whereBetween('created_at', [monthStart, monthEnd])
+             .groupBy('staff_id', 'project_id'),
         
         // Raw donations just for donor emails
         db('donations')
@@ -915,11 +979,11 @@ app.get('/admin/summary',
       const donorCount = summary.donors.size;
       const avgGift = donorCount ? (summary.total / donorCount).toFixed(2) : 0;
 
-      const current = new Date(Date.UTC(year, month - 1));
+      // Replace the existing date calculation with this corrected version:
       const prevMonth = new Date(current);
-      prevMonth.setUTCMonth(current.getUTCMonth() - 1);
+      prevMonth.setUTCMonth(prevMonth.getUTCMonth() - 1);
       const nextMonth = new Date(current);
-      nextMonth.setUTCMonth(current.getUTCMonth() + 1);
+      nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
 
       const format = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
       const prev = format(prevMonth);
@@ -936,7 +1000,7 @@ app.get('/admin/summary',
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Donation Summary Dashboard - Harvest Call Africa</title>
+        <title>Donation Summary Dashboard - Harvest Call Ministries</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <style>
             :root {
@@ -1380,7 +1444,7 @@ app.get('/admin/summary',
 
     res.send(html);
   } catch (err) {
-    console.error('❌ Summary route error:', err.message, err.stack);
+    logger.error('❌ Summary route error:', err.message, err.stack);
     next(err);
   }
 });
@@ -1622,7 +1686,10 @@ app.get('/admin/add-project', requireAuth, (req, res) => {
       </head>
       <body>
         <h2 style="text-align:center;">🛠 Add New Project</h2>
-        <form method="POST" action="/admin/add-project">
+        const token = req.csrfToken();
+...
+<form method="POST" action="/admin/add-project">
+  <input type="hidden" name="_csrf" value="${token}" />
           <input type="text" name="name" placeholder="Project Name" required />
           <textarea name="description" placeholder="Project Description (optional)"></textarea>
           <button type="submit">Add Project</button>
@@ -1679,7 +1746,10 @@ app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
     </head>
     <body>
       <h2 style="text-align:center;">Add New Staff + Login Account</h2>
-      <form method="POST" action="/admin/add-staff-account">
+      const token = req.csrfToken();
+...
+<form method="POST" action="/admin/add-staff-account">
+  <input type="hidden" name="_csrf" value="${token}" />
         <label>Name</label>
         <input type="text" name="name" required />
 
@@ -1784,7 +1854,10 @@ app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
       </head>
       <body>
         <h2>📌 Assign Projects to Staff</h2>
-        <form method="POST" action="/admin/assign-projects">
+        const token = req.csrfToken();
+...
+<form method="POST" action="/admin/assign-projects">
+  <input type="hidden" name="_csrf" value="${token}" />
           <label for="staffId">Select Staff</label>
           <select name="staffId" required>
             <option value="">-- Choose Staff --</option>
@@ -1845,31 +1918,38 @@ const assignments = selectedProjects.map(pid => ({
 
 
 // Login Form
-app.get('/login', (req, res) => {
-  const html = `
-    <html>
-    <head>
-      <title>Staff Login</title>
-      <style>
-        body { font-family: Arial; background: #f0f0f0; padding: 40px; }
-        form { background: #fff; padding: 20px; max-width: 400px; margin: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        input { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; }
-        button { background: #003366; color: white; padding: 10px; width: 100%; border: none; border-radius: 4px; }
-        h2 { text-align: center; margin-bottom: 20px; color: #003366; }
-      </style>
-    </head>
-    <body>
-      <form method="POST" action="/login">
-        <h2>Staff Login</h2>
-        <input type="email" name="email" placeholder="Email" required />
-        <input type="password" name="password" placeholder="Password" required />
-        <button type="submit">Login</button>
-      </form>
-    </body>
-    </html>
-  `;
-  res.send(html);
+app.get('/login', (req, res, next) => {
+  try {
+    const token = req.csrfToken();
+    const html = `
+      <html>
+      <head>
+        <title>Staff Login</title>
+        <style>
+          body { font-family: Arial; background: #f0f0f0; padding: 40px; }
+          form { background: #fff; padding: 20px; max-width: 400px; margin: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          input { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; }
+          button { background: #003366; color: white; padding: 10px; width: 100%; border: none; border-radius: 4px; }
+          h2 { text-align: center; margin-bottom: 20px; color: #003366; }
+        </style>
+      </head>
+      <body>
+        <form method="POST" action="/login">
+          <input type="hidden" name="_csrf" value="${token}" />
+          <h2>Staff Login</h2>
+          <input type="email" name="email" placeholder="Email" required />
+          <input type="password" name="password" placeholder="Password" required />
+          <button type="submit">Login</button>
+        </form>
+      </body>
+      </html>
+    `;
+    res.send(html);
+  } catch (err) {
+    next(err);
+  }
 });
+
 
 
 // Login Handler
@@ -1886,7 +1966,7 @@ app.post('/login',
       const normalizedEmail = email.toLowerCase();
 
       const account = await db('staff_accounts')
-  .whereRaw('LOWER(email) = ?', [normalizedEmail])
+  .where(db.raw('LOWER(email)'), normalizedEmail)
   .first();
 
 if (!account) {
@@ -1936,35 +2016,40 @@ if (!isMatch) {
 
 
 
-// Render change password form
-app.get('/change-password', async (req, res) => {
-  const force = req.query.force === 'true';
-
-  const form = `
-    <html>
-      <head>
-        <title>Change Password</title>
-        <style>
-          body { font-family: Arial; padding: 30px; background: #f9f9f9; }
-          form { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-          input, button { display: block; width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-          button { background: #003366; color: white; font-weight: bold; cursor: pointer; }
-          h2 { color: #003366; }
-        </style>
-      </head>
-      <body>
-        <h2>${force ? 'Please change your password before proceeding' : 'Change Password'}</h2>
-        <form method="POST" action="/change-password">
-          <input type="password" name="old_password" placeholder="Current Password" required />
-          <input type="password" name="new_password" placeholder="New Password" required />
-          <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
-          <button type="submit">Update Password</button>
-        </form>
-      </body>
-    </html>
-  `;
-  res.send(form);
+app.get('/change-password', async (req, res, next) => {
+  try {
+    const force = req.query.force === 'true';
+    const token = req.csrfToken();
+    const form = `
+      <html>
+        <head>
+          <title>Change Password</title>
+          <style>
+            body { font-family: Arial; padding: 30px; background: #f9f9f9; }
+            form { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            input, button { display: block; width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+            button { background: #003366; color: white; font-weight: bold; cursor: pointer; }
+            h2 { color: #003366; }
+          </style>
+        </head>
+        <body>
+          <h2>${force ? 'Please change your password before proceeding' : 'Change Password'}</h2>
+          <form method="POST" action="/change-password">
+            <input type="hidden" name="_csrf" value="${token}" />
+            <input type="password" name="old_password" placeholder="Current Password" required />
+            <input type="password" name="new_password" placeholder="New Password" required />
+            <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
+            <button type="submit">Update Password</button>
+          </form>
+        </body>
+      </html>
+    `;
+    res.send(form);
+  } catch (err) {
+    next(err);
+  }
 });
+
 
 
 app.post('/change-password', async (req, res, next) => {
@@ -2027,10 +2112,10 @@ app.post('/change-password', async (req, res, next) => {
 // 1. Create dedicated staff authentication middleware
 const requireStaffAuth = (req, res, next) => {
   if (req.session?.staffId) {
-    console.log(`🔒 Staff authenticated: ${req.session.staffId}`);
+    logger.info(`🔒 Staff authenticated: ${req.session.staffId}`);
     return next();
   }
-  console.warn('🚫 Staff access denied - no session found');
+  logger.warn('🚫 Staff access denied - no session found');
   res.redirect('/login');
 };
 
@@ -2064,7 +2149,7 @@ const checkProjectAccess = async (req, res, next) => {
       .first();
 
     if (!assignment) {
-      console.warn(`🚫 Unauthorized project access: Staff ${staffId} to Project ${projectId}`);
+      logger.warn(`🚫 Unauthorized project access: Staff ${staffId} to Project ${projectId}`);
       return res.status(403).send('You do not have permission to view this project');
     }
 
@@ -2086,16 +2171,16 @@ app.get('/staff-dashboard', requireStaffAuth, async (req, res) => {
     // Validate staff exists
     const staff = await db('staff').where('id', staffId).first();
     if (!staff) {
-      console.error(`❌ Staff not found: ${staffId}`);
+      logger.error(`❌ Staff not found: ${staffId}`);
       return res.status(404).send('Staff not found');
     }
 
     // Date handling
+// Replace in /staff-dashboard route:
 const today = new Date();
 const current = monthParam
-  ? new Date(`${monthParam}-01T00:00:00.000Z`) // Ensures UTC if monthParam is provided
-  : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)); // Start of current month in UTC
-
+  ? new Date(`${monthParam}-01T00:00:00.000Z`)
+  : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
 const monthKey = current.toLocaleString('default', { 
   year: 'numeric', 
   month: 'long',
@@ -2104,9 +2189,8 @@ const monthKey = current.toLocaleString('default', {
 
     
     // Calculate date range
-    const monthStart = new Date(current);
-    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-    monthEnd.setHours(23, 59, 59);
+    const monthStart = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
+const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
     // Get donations
     // ✅ Solution: Push filtering to the database
@@ -2124,13 +2208,20 @@ const donations = await db('donations')
     const parsedDate = new Date(rawDate);
     if (!(parsedDate >= monthStart && parsedDate <= monthEnd)) return false;
 
-    const metadata = typeof d.metadata === 'string' 
-      ? JSON.parse(d.metadata) 
-      : d.metadata || {};
+    function safeParseMetadata(metadata) {
+  try {
+    const parsed = typeof metadata === 'string' 
+      ? JSON.parse(metadata) 
+      : metadata;
+    return metadataSchema.validate(parsed).value || {};
+  } catch (e) {
+    return {};
+  }
+}
 
     return metadata.staffId == staffId;
   } catch (err) {
-    console.error('❌ Bad donation entry:', d);
+    logger.error('❌ Bad donation entry:', d);
     return false;
   }
 });
@@ -2144,7 +2235,7 @@ const donations = await db('donations')
       : 0;
 
     // Month navigation helpers
-    const formatMonth = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const formatMonth = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
     const prev = formatMonth(new Date(current.getFullYear(), current.getMonth() - 1, 1));
     const next = formatMonth(new Date(current.getFullYear(), current.getMonth() + 1, 1));
 
@@ -2663,18 +2754,29 @@ const donations = await db('donations')
       ? JSON.parse(d.metadata) 
       : d.metadata || {};
   } catch (err) {
-    console.error('❌ Metadata parse error for donation ID', d.id);
+    logger.error('❌ Metadata parse error for donation ID', d.id);
   }
 
   // ✅ Safe and formatted date
-  const rawDate = d.created_at || d.timestamp;
-  let donationDate = 'Invalid Date';
-  try {
-    donationDate = new Date(rawDate).toLocaleDateString('en-US', {
-      year: 'numeric', month: 'long', day: 'numeric',
-      timeZone: 'UTC'
-    });
-  } catch {}
+ // Consistent UTC handling
+const monthStart = new Date(Date.UTC(year, month - 1, 1));
+const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+// Proper UTC formatting
+const formattedDate = new Date(rawDate).toLocaleDateString('en-US', {
+  timeZone: 'UTC',
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric'
+});
+
+// Correct month navigation
+function getPrevMonth(date) {
+  const d = new Date(date);
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+  
 
   // Continue with rendering...
 
@@ -2690,7 +2792,7 @@ const donations = await db('donations')
                                     <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
                                     <td><span class="type ${metadata.donationType === 'recurring' ? '' : 'one-time'}">${metadata.donationType || 'one-time'}</span></td>
                                     <td class="reference">${d.reference}</td>
-                                    <td>${donationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                                    <td>${donationDate.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })}</td>
                                 </tr>`;
                             }).join('')}
                         </tbody>
@@ -2737,7 +2839,7 @@ const donations = await db('donations')
                 });
                 
             } catch (error) {
-                console.error('Project load error:', error);
+                logger.error('Project load error:', error);
                 const select = document.getElementById('project-select');
                 select.innerHTML = '<option value="">Failed to load projects</option>';
             }
@@ -2780,10 +2882,9 @@ app.get('/project-dashboard',
     const project = await db('projects').where('id', parseInt(projectId)).first();
     if (!project) return res.status(404).send('Project not found');
 
-    const today = new Date();
-const current = monthParam
-  ? new Date(Date.UTC(...monthParam.split('-').map((n, i) => i === 1 ? Number(n) - 1 : Number(n)), 1))
-  : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const current = monthParam
+  ? new Date(`${monthParam}-01T00:00:00.000Z`)
+  : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
 
 const monthKey = current.toLocaleString('default', {
   year: 'numeric',
@@ -2801,14 +2902,21 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
 
     const filtered = donations.filter(d => {
   try {
-    const metadata = typeof d.metadata === 'string'
-      ? JSON.parse(d.metadata)
-      : d.metadata || {};
+    function safeParseMetadata(metadata) {
+  try {
+    const parsed = typeof metadata === 'string' 
+      ? JSON.parse(metadata) 
+      : metadata;
+    return metadataSchema.validate(parsed).value || {};
+  } catch (e) {
+    return {};
+  }
+}
 
     // Coerce both sides to string for safe comparison
     return String(metadata.projectId) === String(projectId);
   } catch (err) {
-    console.error('❌ Bad metadata in donation ID', d.id, ':', d.metadata);
+    logger.error('❌ Bad metadata in donation ID', d.id, ':', d.metadata);
     return false;
   }
 });
@@ -2820,10 +2928,9 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
     const avgDonation = donorCount > 0 ? (totalAmount / donorCount).toFixed(2) : 0;
 
     // Month navigation helpers
-    function prevMonth(date) {
-      const d = new Date(date.getFullYear(), date.getMonth() - 1, 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
+    const prevMonthDate = new Date(current);
+prevMonthDate.setUTCMonth(prevMonthDate.getUTCMonth() - 1);
+const prev = `${prevMonthDate.getUTCFullYear()}-${String(prevMonthDate.getUTCMonth() + 1).padStart(2, '0')}`;
 
     function nextMonth(date) {
       const d = new Date(date.getFullYear(), date.getMonth() + 1, 1);
@@ -3325,17 +3432,27 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
   try {
     metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
   } catch (err) {
-    console.error('❌ Metadata parse error for donation:', d.id);
+    logger.error('❌ Metadata parse error for donation:', d.id);
   }
 
-  const rawDate = d.created_at || d.timestamp;
-  let displayDate = 'Invalid Date';
-  try {
-    displayDate = new Date(rawDate).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      timeZone: 'UTC'
-    });
-  } catch {}
+  c// Consistent UTC handling
+const monthStart = new Date(Date.UTC(year, month - 1, 1));
+const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+// Proper UTC formatting
+const formattedDate = new Date(rawDate).toLocaleDateString('en-US', {
+  timeZone: 'UTC',
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric'
+});
+
+// Correct month navigation
+function getPrevMonth(date) {
+  const d = new Date(date);
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
                                 return `
                                 <tr>
                                     <td>
@@ -3399,17 +3516,30 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
 // ✅ Global error handler
 app.use((err, req, res, next) => {
+  // Handle rate limiter proxy error specifically
+  if (err.code === 'ERR_ERL_UNEXPECTED_X_FORWARDED_FOR') {
+    return res.status(500).json({
+      error: {
+        name: 'ProxyError',
+        message: 'Proxy configuration error',
+        details: 'Server is behind a proxy but not configured to trust it'
+      }
+    });
+  }
+  
   const status = err.status || 500;
   const response = {
     error: {
-      name: err.name,
-      message: err.message
+      name: err.name || 'InternalError',
+      message: err.message || 'An unexpected error occurred'
     }
   };
+  
   if (process.env.NODE_ENV === 'development') {
     response.error.stack = err.stack;
   }
-  console.error('❌ Uncaught error:', err);
+  
+  logger.error('❌ Uncaught error:', err);
   res.status(status).json(response);
 });
 
@@ -3420,16 +3550,16 @@ async function runIndexMaintenance() {
     if (isMaintenanceRunning) return;
     isMaintenanceRunning = true;
     try {
-      console.log('🔄 Starting index maintenance...');
+      logger.info('🔄 Starting index maintenance...');
       await db.raw('ANALYZE donations');
-      console.log('✅ ANALYZE donations completed');
+      logger.info('✅ ANALYZE donations completed');
       const utcHours = new Date().getUTCHours();
       if (utcHours >= 1 && utcHours <= 4) {
         await db.raw('REINDEX TABLE donations');
-        console.log('🔄 REINDEX donations completed');
+        logger.info('🔄 REINDEX donations completed');
       }
     } catch (err) {
-      console.error('❌ Index maintenance failed:', err.message);
+      logger.error('❌ Index maintenance failed:', err.message);
       if (process.env.SENDGRID_API_KEY && process.env.ADMIN_EMAIL) {
         await sgMail.send({
           to: process.env.ADMIN_EMAIL,
@@ -3449,13 +3579,15 @@ const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
-    console.log('⏳ Initializing database...');
+    logger.info('⏳ Initializing database...');
     await initializeDatabase();
-    console.log('🔧 Running initial index maintenance...');
+
+    logger.info('🔧 Running initial index maintenance...');
     await runIndexMaintenance();
-    console.log('🚀 Starting Express server...');
+
+    logger.info('🚀 Starting Express server...');
     app.listen(PORT, () => {
-      console.log(`✅ Server is running on port ${PORT}`);
+      logger.info(`✅ Server is running on port ${PORT}`);
       setInterval(() => {
         const now = new Date();
         if (now.getUTCDay() === 0 && now.getUTCHours() === 2) {
@@ -3464,13 +3596,23 @@ async function startServer() {
       }, 60 * 60 * 1000);
     });
   } catch (err) {
-    console.error('❌ Failed to start server:', err);
+    logger.error('❌ Failed to start server:', err);
+    try {
+      await notifyAdmin('Critical App Crash', err.stack);
+    } catch (notifyErr) {
+      logger.warn('Failed to notify admin of startup failure.');
+    }
     process.exit(1);
   }
 }
 
+
 process.on('SIGINT', async () => {
-  console.log('🛑 Shutting down gracefully...');
+  try {
+    await notifyAdmin('🔻 Server Shutdown', 'The server is shutting down via SIGINT.');
+  } catch (e) {
+    logger.warn('Failed to notify admin of shutdown.');
+  }
   await db.destroy();
   process.exit(0);
 });
