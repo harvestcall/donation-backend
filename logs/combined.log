@@ -1,0 +1,20 @@
+{"level":"info","message":"NODE_ENV:","timestamp":"2025-07-04T11:09:26.518Z"}
+{"level":"info","message":"🛠 Using DB Connection:","ssl":{"rejectUnauthorized":false},"timestamp":"2025-07-04T11:09:26.827Z"}
+{"level":"info","message":"🌍 Running in environment:","timestamp":"2025-07-04T11:09:26.828Z"}
+{"level":"info","message":"⏳ Initializing database...","timestamp":"2025-07-04T11:09:26.853Z"}
+{"level":"error","message":"❌ Database initialization error:","timestamp":"2025-07-04T11:09:26.876Z"}
+{"level":"info","message":"🔧 Running initial index maintenance...","timestamp":"2025-07-04T11:09:26.876Z"}
+{"level":"info","message":"🔄 Starting index maintenance...","timestamp":"2025-07-04T11:09:26.877Z"}
+{"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T11:09:26.878Z"}
+{"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-04T11:09:34.974Z"}
+{"level":"info","message":"✅ Server is running on port 5000","timestamp":"2025-07-04T11:09:34.982Z"}
+{"level":"info","message":"NODE_ENV:","timestamp":"2025-07-04T11:09:55.985Z"}
+{"level":"info","message":"🛠 Using DB Connection:","ssl":{"rejectUnauthorized":false},"timestamp":"2025-07-04T11:09:56.139Z"}
+{"level":"info","message":"🌍 Running in environment:","timestamp":"2025-07-04T11:09:56.140Z"}
+{"level":"info","message":"⏳ Initializing database...","timestamp":"2025-07-04T11:09:56.156Z"}
+{"level":"error","message":"❌ Database initialization error:","timestamp":"2025-07-04T11:09:56.171Z"}
+{"level":"info","message":"🔧 Running initial index maintenance...","timestamp":"2025-07-04T11:09:56.172Z"}
+{"level":"info","message":"🔄 Starting index maintenance...","timestamp":"2025-07-04T11:09:56.172Z"}
+{"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T11:09:56.173Z"}
+{"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-04T11:09:57.286Z"}
+{"level":"info","message":"✅ Server is running on port 5000","timestamp":"2025-07-04T11:09:57.292Z"}

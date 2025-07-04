@@ -21,6 +21,8 @@ const cache = apicache.middleware;
 const formatCurrency = require('./utils/formatCurrency');
 const logger = require('./utils/logger');
 const { notifyAdmin } = require('./utils/alerts');
+const { doubleCsrf } = require('csrf-csrf');
+const jwt = require('jsonwebtoken');
 
 
 const app = express();
@@ -74,13 +76,31 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: { 
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-  }
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  httpOnly: true,
+  maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+}
 }));
 
-const csrf = require('csurf');
-app.use(csrf());
+const {
+  generateToken,
+  doubleCsrfProtection,
+} = doubleCsrf({
+  getSecret: () => process.env.SESSION_SECRET,
+  cookieName: "__Host-hc-csrf-token",
+  cookieOptions: {
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+  },
+});
+
+app.use(doubleCsrfProtection);
+app.use((req, res, next) => {
+  res.locals.csrfToken = generateToken(res, req);
+  next();
+});
 
 
 // ✅ Rate Limiters
@@ -131,15 +151,20 @@ const verifyPaystackWebhook = (req, res, next) => {
 };
 
 
-// ✅ Escape HTML utility (for XSS protection)
 function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, tag => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  }[tag]));
+  if (typeof str !== 'string') return str;
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Add after escapeHtml function
+function sanitizeHeader(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[\r\n]/g, '');
 }
 
 // ✅ Basic Auth Middleware
@@ -360,7 +385,9 @@ if (staffName && projectName) {
       logger.info('Purpose:', purposeText);
 
       // Send beautiful thank-you email
-      const donorFirstName = validMetadata.donorName?.split(' ')[0] || 'Friend';
+      const sanitizedDonorName = sanitizeHeader(donorName || '');
+      const donorFirstName = sanitizedDonorName.split(' ')[0] || 'Friend';
+      const toEmail = sanitizeHeader(paymentData.customer.email);
       const formattedAmount = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: paymentData.currency || 'NGN',
@@ -377,12 +404,12 @@ if (staffName && projectName) {
 
 
       await sgMail.send({
-        to: paymentData.customer.email,
-        from: {
-          name: 'Harvest Call Ministries',
-          email: 'giving@harvestcallafrica.org'
-        },
-        subject: `Thank You, ${donorFirstName}! Your Generosity is Making a Difference`,
+  to: toEmail,  // Use sanitized email
+  from: {
+    name: 'Harvest Call Ministries',
+    email: 'giving@harvestcallafrica.org'
+  },
+  subject: sanitizeHeader(`Thank You, ${donorFirstName}! Your Generosity is Making a Difference`),
         html: `
           <!DOCTYPE html>
           <html>
@@ -537,9 +564,9 @@ if (staffName && projectName) {
               </div>
               
               <div class="content">
-                <h2 class="thank-you">Thank You, ${donorFirstName}!</h2>
+                <h2 class="thank-you">Thank You, ${escapeHtml(donorFirstName)}!</h2>
                 
-                <p>We're incredibly grateful for your generous donation of <span class="highlight">${formattedAmount}</span> to Harvest Call Ministries. Your support is making a tangible difference in advancing God's kingdom across Africa.</p>
+                <p>We're incredibly grateful for your generous donation of <span class="highlight">${formattedAmount}</span> to Harvest Call Ministries. Your support is making a tangible difference in advancing God's kingdom across Africa and beyond.</p>
                 
                 <div class="details-card">
                   <div class="detail-row">
@@ -1335,7 +1362,7 @@ app.get('/admin/summary',
                     </div>
                     <div class="title-container">
                         <h1>Donation Summary Dashboard</h1>
-                        <p>Harvest Call Ministries - Monthly Contributions Report</p>
+                        <p>${escapeHtml('Harvest Call Ministries - Monthly Contributions Report')}</p>
                     </div>
                 </div>
                 <div class="controls">
@@ -1423,7 +1450,7 @@ app.get('/admin/summary',
             </div>
             
             <div class="footer">
-                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
+                <p>Harvest Call Ministries • Generated on ${escapeHtml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }))}</p>
             </div>
         </div>
         
@@ -1686,10 +1713,10 @@ app.get('/admin/add-project', requireAuth, (req, res) => {
       </head>
       <body>
         <h2 style="text-align:center;">🛠 Add New Project</h2>
-        const token = req.csrfToken();
+        const token = res.locals.csrfToken;
 ...
 <form method="POST" action="/admin/add-project">
-  <input type="hidden" name="_csrf" value="${token}" />
+  <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
           <input type="text" name="name" placeholder="Project Name" required />
           <textarea name="description" placeholder="Project Description (optional)"></textarea>
           <button type="submit">Add Project</button>
@@ -1746,10 +1773,10 @@ app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
     </head>
     <body>
       <h2 style="text-align:center;">Add New Staff + Login Account</h2>
-      const token = req.csrfToken();
+      const token = res.locals.csrfToken;
 ...
 <form method="POST" action="/admin/add-staff-account">
-  <input type="hidden" name="_csrf" value="${token}" />
+  <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
         <label>Name</label>
         <input type="text" name="name" required />
 
@@ -1808,7 +1835,6 @@ app.post('/admin/add-staff-account',
           email,
           password_hash,
           staff_id: staffId,
-          must_change_password: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
@@ -1817,7 +1843,7 @@ app.post('/admin/add-staff-account',
       res.send(`
         <div style="font-family: Arial; padding: 30px;">
           <h2 style="color: #2E7D32;">✅ Staff Account Created</h2>
-          <p>${name} with login <strong>${email}</strong> has been added successfully.</p>
+          <p>${escapeHtml(name)} with login <strong>${escapeHtml(email)}</strong> has been added successfully.</p>
           <a href="/admin/add-staff-account" style="display:inline-block;margin-top:20px;background:#003366;color:white;padding:10px 20px;text-decoration:none;border-radius:4px;">Add Another</a>
         </div>
       `);
@@ -1854,10 +1880,10 @@ app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
       </head>
       <body>
         <h2>📌 Assign Projects to Staff</h2>
-        const token = req.csrfToken();
+        const token = res.locals.csrfToken;
 ...
 <form method="POST" action="/admin/assign-projects">
-  <input type="hidden" name="_csrf" value="${token}" />
+  <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
           <label for="staffId">Select Staff</label>
           <select name="staffId" required>
             <option value="">-- Choose Staff --</option>
@@ -1920,7 +1946,7 @@ const assignments = selectedProjects.map(pid => ({
 // Login Form
 app.get('/login', (req, res, next) => {
   try {
-    const token = req.csrfToken();
+    const token = res.locals.csrfToken;
     const html = `
       <html>
       <head>
@@ -1935,7 +1961,7 @@ app.get('/login', (req, res, next) => {
       </head>
       <body>
         <form method="POST" action="/login">
-          <input type="hidden" name="_csrf" value="${token}" />
+          <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
           <h2>Staff Login</h2>
           <input type="email" name="email" placeholder="Email" required />
           <input type="password" name="password" placeholder="Password" required />
@@ -2002,9 +2028,6 @@ if (!isMatch) {
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
 
-        if (account.must_change_password) {
-          return res.redirect('/change-password?force=true');
-        }
 
         return res.redirect('/staff-dashboard');
       });
@@ -2019,7 +2042,7 @@ if (!isMatch) {
 app.get('/change-password', async (req, res, next) => {
   try {
     const force = req.query.force === 'true';
-    const token = req.csrfToken();
+    const token = res.locals.csrfToken;
     const form = `
       <html>
         <head>
@@ -2035,7 +2058,7 @@ app.get('/change-password', async (req, res, next) => {
         <body>
           <h2>${force ? 'Please change your password before proceeding' : 'Change Password'}</h2>
           <form method="POST" action="/change-password">
-            <input type="hidden" name="_csrf" value="${token}" />
+            <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
             <input type="password" name="old_password" placeholder="Current Password" required />
             <input type="password" name="new_password" placeholder="New Password" required />
             <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
@@ -2085,12 +2108,16 @@ app.post('/change-password', async (req, res, next) => {
       });
     }
 
-    const newHash = await bcrypt.hash(new_password, BCRYPT_COST);
+    const newHash = await new Promise((resolve, reject) => {
+  bcrypt.hash(new_password, BCRYPT_COST, (err, hash) => {
+    if (err) reject(new DatabaseError('Password hashing failed'));
+    resolve(hash);
+  });
+});
     await db('staff_accounts')
       .where('staff_id', req.session.staffId)
       .update({
         password_hash: newHash,
-        must_change_password: false,
         updated_at: new Date().toISOString()
       });
 
@@ -2108,6 +2135,89 @@ app.post('/change-password', async (req, res, next) => {
 
 });
 
+// Password reset request endpoint
+app.post('/request-password-reset', async (req, res, next) => {
+  const { email } = req.body;
+  
+  if (!email) {
+    return res.status(400).json({
+      error: {
+        name: 'ValidationError',
+        message: 'Email is required'
+      }
+    });
+  }
+
+  try {
+    const account = await db('staff_accounts')
+      .where('email', email.toLowerCase())
+      .first();
+
+    if (account) {
+      const token = jwt.sign({ id: account.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${token}`;
+      
+      // In production: Send actual email with resetLink
+      logger.info(`Password reset link for ${email}: ${resetLink}`);
+    }
+    
+    res.json({ 
+      message: 'If an account exists, reset instructions have been sent' 
+    });
+  } catch (err) {
+    logger.error('Password reset request error:', err);
+    next(new DatabaseError('Failed to process password reset request'));
+  }
+});
+
+// Password reset handler
+app.post('/reset-password', async (req, res, next) => {
+  const { token, newPassword } = req.body;
+  
+  if (!token || !newPassword) {
+    return res.status(400).json({
+      error: {
+        name: 'ValidationError',
+        message: 'Token and new password are required'
+      }
+    });
+  }
+
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const accountId = decoded.id;
+
+    // Hash new password asynchronously
+    const newHash = await new Promise((resolve, reject) => {
+      bcrypt.hash(newPassword, BCRYPT_COST, (err, hash) => {
+        if (err) reject(new DatabaseError('Password hashing failed'));
+        resolve(hash);
+      });
+    });
+
+    // Update password
+    await db('staff_accounts')
+      .where('id', accountId)
+      .update({ 
+        password_hash: newHash,
+        updated_at: new Date().toISOString()
+      });
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return res.status(400).json({
+        error: {
+          name: 'InvalidToken',
+          message: 'Invalid or expired token'
+        }
+      });
+    }
+    logger.error('Password reset error:', err);
+    next(err);
+  }
+});
 
 // 1. Create dedicated staff authentication middleware
 const requireStaffAuth = (req, res, next) => {
@@ -2790,8 +2900,8 @@ function getPrevMonth(date) {
                                         </div>
                                     </td>
                                     <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
-                                    <td><span class="type ${metadata.donationType === 'recurring' ? '' : 'one-time'}">${metadata.donationType || 'one-time'}</span></td>
-                                    <td class="reference">${d.reference}</td>
+                                    <td>${escapeHtml(metadata.donationType || 'one-time')}</td>
+                                    <td class="reference">${escapeHtml(d.reference)}</td>
                                     <td>${donationDate.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })}</td>
                                 </tr>`;
                             }).join('')}
@@ -2801,7 +2911,7 @@ function getPrevMonth(date) {
         </div>
         
         <div class="footer">
-           <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
+           <p>Harvest Call Ministries • Generated on ${escapeHtml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }))}</p>
         </div>
     </div>
     
@@ -3464,8 +3574,8 @@ function getPrevMonth(date) {
                                         </div>
                                     </td>
                                     <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
-                                    <td><span class="type ${metadata.donationType === 'recurring' ? '' : 'one-time'}">${metadata.donationType || 'one-time'}</span></td>
-                                    <td class="reference">${d.reference}</td>
+                                    <td>${escapeHtml(metadata.donationType || 'one-time')}</td>
+                                    <td class="reference">${escapeHtml(d.reference)}</td>
                                     <td>${displayDate}</td>
                                 </tr>
                                 `;
@@ -3476,7 +3586,7 @@ function getPrevMonth(date) {
             </div>
             
             <div class="footer">
-                <p>Harvest Call Ministries • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
+                <p>Harvest Call Ministries • Generated on ${escapeHtml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }))}</p>
             </div>
         </div>
         
