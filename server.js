@@ -245,6 +245,21 @@ async function initializeDatabase() {
 }
 
 
+console.log('generateToken is a function?', typeof generateToken === 'function');
+
+app.use((req, res, next) => {
+  try {
+    const token = generateToken(req, res);
+    console.log('Generated CSRF token:', token);
+    res.locals.csrfToken = token;
+    next();
+  } catch (err) {
+    console.error('CSRF token generation error:', err);
+    next(err);
+  }
+});
+
+
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
     try {
       const all = await db('donations').select('*');

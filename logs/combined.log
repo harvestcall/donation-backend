@@ -18,3 +18,23 @@
 {"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T11:09:56.173Z"}
 {"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-04T11:09:57.286Z"}
 {"level":"info","message":"✅ Server is running on port 5000","timestamp":"2025-07-04T11:09:57.292Z"}
+{"level":"info","message":"NODE_ENV:","timestamp":"2025-07-04T18:01:32.610Z"}
+{"level":"info","message":"🛠 Using DB Connection:","ssl":{"rejectUnauthorized":false},"timestamp":"2025-07-04T18:01:33.011Z"}
+{"level":"info","message":"🌍 Running in environment:","timestamp":"2025-07-04T18:01:33.011Z"}
+{"level":"info","message":"⏳ Initializing database...","timestamp":"2025-07-04T18:01:33.018Z"}
+{"level":"error","message":"❌ Database initialization error:","timestamp":"2025-07-04T18:01:33.050Z"}
+{"level":"info","message":"🔧 Running initial index maintenance...","timestamp":"2025-07-04T18:01:33.051Z"}
+{"level":"info","message":"🔄 Starting index maintenance...","timestamp":"2025-07-04T18:01:33.051Z"}
+{"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T18:01:33.053Z"}
+{"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-04T18:01:35.654Z"}
+{"level":"info","message":"✅ Server is running on port 5000","timestamp":"2025-07-04T18:01:35.661Z"}
+{"level":"info","message":"NODE_ENV:","timestamp":"2025-07-04T18:34:32.892Z"}
+{"level":"info","message":"🛠 Using DB Connection:","ssl":{"rejectUnauthorized":false},"timestamp":"2025-07-04T18:34:33.235Z"}
+{"level":"info","message":"🌍 Running in environment:","timestamp":"2025-07-04T18:34:33.235Z"}
+{"level":"info","message":"⏳ Initializing database...","timestamp":"2025-07-04T18:34:33.243Z"}
+{"level":"error","message":"❌ Database initialization error:","timestamp":"2025-07-04T18:34:33.268Z"}
+{"level":"info","message":"🔧 Running initial index maintenance...","timestamp":"2025-07-04T18:34:33.269Z"}
+{"level":"info","message":"🔄 Starting index maintenance...","timestamp":"2025-07-04T18:34:33.269Z"}
+{"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T18:34:33.273Z"}
+{"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-04T18:34:35.679Z"}
+{"level":"info","message":"✅ Server is running on port 5000","timestamp":"2025-07-04T18:34:35.685Z"}
