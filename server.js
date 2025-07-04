@@ -83,22 +83,27 @@ app.use(session({
 }
 }));
 
-const doubleCsrfUtilities = doubleCsrf({
+
+const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
   getSecret: () => process.env.SESSION_SECRET,
   cookieName: "__Host-hc-csrf-token",
   cookieOptions: {
     sameSite: "lax",
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === "production",
     httpOnly: true,
   },
 });
 
-const { generateToken, doubleCsrfProtection } = doubleCsrfUtilities;
-
+// Apply CSRF protection middleware globally (GET + POST)
 app.use(doubleCsrfProtection);
-app.use((req, res, next) => {
-  res.locals.csrfToken = generateToken(req, res);
-  next();
+
+// Optional: catch CSRF errors nicely
+app.use((err, req, res, next) => {
+  if (err === invalidCsrfTokenError) {
+    console.warn("⚠️ Invalid CSRF token");
+    return res.status(403).json({ error: "Invalid CSRF token" });
+  }
+  next(err);
 });
 
 
@@ -243,21 +248,6 @@ async function initializeDatabase() {
     logger.error('❌ Database initialization error:', err.message);
   }
 }
-
-
-console.log('generateToken is a function?', typeof generateToken === 'function');
-
-app.use((req, res, next) => {
-  try {
-    const token = generateToken(req, res);
-    console.log('Generated CSRF token:', token);
-    res.locals.csrfToken = token;
-    next();
-  } catch (err) {
-    console.error('CSRF token generation error:', err);
-    next(err);
-  }
-});
 
 
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
