@@ -311,7 +311,11 @@ async function initializeDatabase() {
 }
 
   app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'donation-form.html'));
+  res.sendFile(path.resolve(__dirname, 'donation-form.html'), {
+  headers: {
+    'Content-Type': 'text/html'
+  }
+});
 });
 
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
