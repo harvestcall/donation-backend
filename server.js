@@ -23,6 +23,7 @@ const logger = require('./utils/logger');
 const { notifyAdmin } = require('./utils/alerts');
 const { doubleCsrf } = require('csrf-csrf');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 
 
 const app = express();
@@ -309,6 +310,9 @@ async function initializeDatabase() {
   }
 }
 
+  app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'donation-form.html'));
+});
 
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
     try {
