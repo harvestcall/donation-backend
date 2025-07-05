@@ -28,12 +28,59 @@ const jwt = require('jsonwebtoken');
 const app = express();
 app.set('trust proxy', true);  // Trust Render.com proxies
 logger.info('NODE_ENV:', process.env.NODE_ENV);
-if (!process.env.SESSION_SECRET) {
-  throw new Error('❌ SESSION_SECRET is missing in .env');
-}
+
+// ✅ CORS Configuration - Added per security recommendation
+app.use(cors({ 
+  origin: process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+// Nonce generation middleware
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString('hex');
+  next();
+});
+
+// ✅ Helmet Activation - Added for enhanced security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        (req, res) => `'nonce-${res.locals.cspNonce}'`,
+        "cdnjs.cloudflare.com"
+      ],
+      styleSrc: [
+        "'self'",
+        (req, res) => `'nonce-${res.locals.cspNonce}'`,
+        "cdnjs.cloudflare.com"
+      ],
+      imgSrc: ["'self'", "data:"],
+      fontSrc: ["'self'", "cdnjs.cloudflare.com"],
+      connectSrc: ["'self'", process.env.PAYSTACK_API_URL || "https://api.paystack.co"]
+    }
+  },
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true
+  },
+  referrerPolicy: { policy: 'same-origin' },
+  frameguard: { action: 'deny' },      // Block iframe embedding
+  noSniff: true,                       // Prevent MIME type sniffing
+  ieNoOpen: true,                      // Disable IE file open
+  xssFilter: true                      // Enable XSS filter
+}));
 
 
-const BCRYPT_COST = process.env.BCRYPT_COST || 8;
+const BCRYPT_COST = Math.min(
+  Math.max(parseInt(process.env.BCRYPT_COST) || 8, 8),
+  12
+);
+logger.info(`🔒 Using bcrypt cost factor: ${BCRYPT_COST}`);
 
 // Add after bodyParser middleware:
 app.use((req, res, next) => {
@@ -63,6 +110,19 @@ app.use(bodyParser.json({
 const db = require('./db');
 logger.info("🛠 Using DB Connection:", db.client.config.connection);
 logger.info("🌍 Running in environment:", process.env.NODE_ENV);
+
+// Critical environment validation
+const requiredEnvVars = [
+  'PAYSTACK_SECRET_KEY',
+  'DATABASE_URL',
+  'FRONTEND_URL',
+  'SENDGRID_API_KEY'
+];
+
+const missingVars = requiredEnvVars.filter(env => !process.env[env]);
+if (missingVars.length > 0) {
+  throw new Error(`❌ Critical ENV variables missing: ${missingVars.join(', ')}`);
+}
 
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -1579,7 +1639,11 @@ app.get('/admin/staff', requireAuth, async (req, res, next) => {
 
 app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
   try {
-    const staffId = req.sanitizedId;
+    // ✅ Fix SQL Injection Vulnerability - Replaced with safe parsing
+    const staffId = parseInt(req.params.id);
+    if (isNaN(staffId) || staffId <= 0) {
+      throw new Error('Invalid staff ID');
+    }
 
     await db.transaction(async trx => {
       const staff = await trx('staff').where('id', staffId).first();
@@ -1970,6 +2034,11 @@ app.get('/login', (req, res, next) => {
           <input type="email" name="email" placeholder="Email" required />
           <input type="password" name="password" placeholder="Password" required />
           <button type="submit">Login</button>
+          
+          <!-- ADDED FORGOT PASSWORD LINK HERE -->
+          <p style="text-align: center; margin-top: 15px;">
+            <a href="/forgot-password">Forgot your password?</a>
+          </p>
         </form>
       </body>
       </html>
@@ -1979,7 +2048,6 @@ app.get('/login', (req, res, next) => {
     next(err);
   }
 });
-
 
 
 // Login Handler
@@ -2040,6 +2108,84 @@ if (!isMatch) {
     }
   }
 );
+
+
+// Password reset request endpoint
+app.get('/forgot-password', (req, res) => {
+  const token = res.locals.csrfToken;
+  res.send(`
+    <html>
+    <head>
+      <title>Reset Password</title>
+      <style>
+        body { font-family: Arial; padding: 40px; background: #f5f5f5; }
+        form { background: white; padding: 30px; max-width: 400px; margin: 0 auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #003366; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #003366; color: white; padding: 12px; width: 100%; border: none; border-radius: 4px; cursor: pointer; }
+        .footer { text-align: center; margin-top: 20px; }
+      </style>
+    </head>
+    <body>
+      <form method="POST" action="/request-password-reset">
+        <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
+        <h2>Reset Your Password</h2>
+        <input type="email" name="email" placeholder="Enter your email" required />
+        <button type="submit">Send Reset Instructions</button>
+        <div class="footer">
+          <a href="/login">Remembered your password?</a>
+        </div>
+      </form>
+    </body>
+    </html>
+  `);
+});
+
+// ✅ Password Reset Form - Added for token-based password reset
+app.get('/reset-password', (req, res) => {
+  const token = req.query.token;
+  const csrfToken = res.locals.csrfToken;
+  
+  if (!token) {
+    return res.status(400).send(`
+      <div style="text-align:center; padding:40px;">
+        <h2 style="color:#d32f2f;">Invalid Reset Link</h2>
+        <p>The password reset link is missing the required token.</p>
+        <p>Please request a new <a href="/forgot-password">password reset</a>.</p>
+      </div>
+    `);
+  }
+
+  res.send(`
+    <html>
+    <head>
+      <title>Reset Password</title>
+      <style>
+        body { font-family: Arial; padding: 40px; background: #f5f5f5; }
+        form { background: white; padding: 30px; max-width: 400px; margin: 0 auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #003366; text-align: center; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #2E7D32; color: white; padding: 12px; width: 100%; border: none; border-radius: 4px; cursor: pointer; }
+        .info { background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 15px; text-align: center; }
+      </style>
+    </head>
+    <body>
+      <form method="POST" action="/reset-password">
+        <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+        <input type="hidden" name="token" value="${escapeHtml(token)}" />
+        <h2>Reset Your Password</h2>
+        <div class="info">
+          <i class="fas fa-lock"></i> Create a new password
+        </div>
+        <input type="password" name="new_password" placeholder="New Password" required minlength="6" />
+        <input type="password" name="confirm_password" placeholder="Confirm New Password" required minlength="6" />
+        <button type="submit">Reset Password</button>
+      </form>
+    </body>
+    </html>
+  `);
+});
+
 
 
 
@@ -2140,49 +2286,233 @@ app.post('/change-password', async (req, res, next) => {
 });
 
 // Password reset request endpoint
-app.post('/request-password-reset', async (req, res, next) => {
-  const { email } = req.body;
-  
-  if (!email) {
-    return res.status(400).json({
-      error: {
-        name: 'ValidationError',
-        message: 'Email is required'
-      }
-    });
-  }
-
-  try {
-    const account = await db('staff_accounts')
-      .where('email', email.toLowerCase())
-      .first();
-
-    if (account) {
-      const token = jwt.sign({ id: account.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-      const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${token}`;
-      
-      // In production: Send actual email with resetLink
-      logger.info(`Password reset link for ${email}: ${resetLink}`);
-    }
+app.post('/request-password-reset', 
+  [body('email').isEmail().normalizeEmail().withMessage('Valid email is required')],
+  validateRequest,
+  async (req, res, next) => {
+    const { email } = req.body;
     
-    res.json({ 
-      message: 'If an account exists, reset instructions have been sent' 
-    });
-  } catch (err) {
-    logger.error('Password reset request error:', err);
-    next(new DatabaseError('Failed to process password reset request'));
+    try {
+      const normalizedEmail = email.toLowerCase();
+      const account = await db('staff_accounts')
+        .where('email', normalizedEmail)
+        .first();
+
+      if (account) {
+        const token = jwt.sign({ id: account.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${token}`;
+        
+        // Send actual email in production
+        if (process.env.SENDGRID_API_KEY) {
+          sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+          await sgMail.send({
+            to: normalizedEmail,
+            from: {
+              name: 'Harvest Call Support',
+              email: 'support@harvestcallafrica.org'
+            },
+            subject: 'Password Reset Instructions',
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background: #003366; color: white; padding: 20px; text-align: center; }
+                  .content { padding: 30px; background: #f8f9fa; }
+                  .btn { display: inline-block; padding: 12px 24px; background: #2E7D32; 
+                         color: white; text-decoration: none; border-radius: 4px; margin: 20px 0; }
+                  .footer { text-align: center; color: #6c757d; font-size: 14px; margin-top: 30px; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header">
+                    <h2>Password Reset Request</h2>
+                  </div>
+                  <div class="content">
+                    <p>Hello,</p>
+                    <p>We received a request to reset your password for the Harvest Call Ministries staff portal.</p>
+                    <p>Click the button below to reset your password:</p>
+                    <p><a href="${resetLink}" class="btn">Reset Password</a></p>
+                    <p>This link will expire in 1 hour. If you didn't request this, please ignore this email.</p>
+                  </div>
+                  <div class="footer">
+                    <p>Harvest Call Ministries &copy; ${new Date().getFullYear()}</p>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `
+          });
+          logger.info(`📧 Password reset email sent to ${normalizedEmail}`);
+        } else {
+          logger.info(`Password reset link for ${normalizedEmail}: ${resetLink}`);
+        }
+      }
+      
+      // Always show success message regardless of account existence
+      res.send(`
+        <html>
+        <head>
+          <title>Reset Request Sent</title>
+          <style>
+            body { 
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: #f8f9fa; 
+              padding: 40px;
+              text-align: center;
+            }
+            .card {
+              background: white;
+              max-width: 500px;
+              margin: 0 auto;
+              padding: 30px;
+              border-radius: 10px;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            }
+            h2 { color: #2E7D32; }
+            p { color: #333; line-height: 1.6; }
+            .btn {
+              display: inline-block;
+              margin-top: 20px;
+              padding: 12px 24px;
+              background: #003366;
+              color: white;
+              text-decoration: none;
+              border-radius: 6px;
+              font-weight: 500;
+            }
+            .info {
+              background: #e8f5e9;
+              padding: 15px;
+              border-radius: 8px;
+              margin: 20px 0;
+              border-left: 4px solid #2E7D32;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h2>Reset Request Received</h2>
+            <div class="info">
+              <p>If an account exists for <strong>${escapeHtml(email)}</strong>, 
+              you'll receive password reset instructions shortly.</p>
+            </div>
+            <p>Please check your email and follow the link to set a new password.</p>
+            <a href="/login" class="btn">Return to Login</a>
+          </div>
+        </body>
+        </html>
+      `);
+    } catch (err) {
+      logger.error('Password reset request error:', err);
+      next(new DatabaseError('Failed to process password reset request'));
+    }
   }
+);
+
+// ✅ Password Reset Form - Added for token-based password reset
+app.get('/reset-password', (req, res) => {
+  const token = req.query.token;
+  const csrfToken = res.locals.csrfToken;
+  
+  if (!token) {
+    return res.status(400).send(`
+      <div style="text-align:center; padding:40px;">
+        <h2 style="color:#d32f2f;">Invalid Reset Link</h2>
+        <p>The password reset link is missing the required token.</p>
+        <p>Please request a new <a href="/forgot-password">password reset</a>.</p>
+      </div>
+    `);
+  }
+
+  res.send(`
+    <html>
+    <head>
+      <title>Reset Password</title>
+      <style>
+        body { font-family: Arial; padding: 40px; background: #f5f5f5; }
+        form { background: white; padding: 30px; max-width: 400px; margin: 0 auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #003366; text-align: center; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #2E7D32; color: white; padding: 12px; width: 100%; border: none; border-radius: 4px; cursor: pointer; }
+        .info { background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 15px; text-align: center; }
+        .error { 
+          color: #d32f2f; 
+          text-align: center; 
+          margin: 10px 0; 
+          display: none; /* Initially hidden */
+        }
+      </style>
+    </head>
+    <body>
+      <form method="POST" action="/reset-password" id="resetForm">
+        <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+        <input type="hidden" name="token" value="${escapeHtml(token)}" />
+        <h2>Reset Your Password</h2>
+        <div class="info">
+          <i class="fas fa-lock"></i> Create a new password
+        </div>
+        <input type="password" name="newPassword" id="newPassword" placeholder="New Password" required minlength="6" />
+        <input type="password" name="confirmPassword" id="confirmPassword" placeholder="Confirm New Password" required minlength="6" />
+        <div id="passwordError" class="error">
+          <i class="fas fa-exclamation-circle"></i> Passwords do not match!
+        </div>
+        <button type="submit">Reset Password</button>
+      </form>
+      
+      <script>
+        document.getElementById('resetForm').addEventListener('submit', function(e) {
+          const newPass = document.getElementById('newPassword');
+          const confirmPass = document.getElementById('confirmPassword');
+          const errorDiv = document.getElementById('passwordError');
+          
+          if (newPass.value !== confirmPass.value) {
+            e.preventDefault(); // Stop form submission
+            
+            // Show error message
+            errorDiv.style.display = 'block';
+            
+            // Highlight fields
+            newPass.style.borderColor = '#d32f2f';
+            confirmPass.style.borderColor = '#d32f2f';
+            
+            // Focus on first password field
+            newPass.focus();
+          } else {
+            // Hide error if previously shown
+            errorDiv.style.display = 'none';
+            newPass.style.borderColor = '';
+            confirmPass.style.borderColor = '';
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `);
 });
 
 // Password reset handler
 app.post('/reset-password', async (req, res, next) => {
-  const { token, newPassword } = req.body;
+  const { token, newPassword, confirmPassword } = req.body;
   
-  if (!token || !newPassword) {
+  // Validate input
+  if (!token || !newPassword || !confirmPassword) {
     return res.status(400).json({
       error: {
         name: 'ValidationError',
-        message: 'Token and new password are required'
+        message: 'All fields are required'
+      }
+    });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({
+      error: {
+        name: 'ValidationError',
+        message: 'Passwords do not match'
       }
     });
   }
@@ -2208,20 +2538,42 @@ app.post('/reset-password', async (req, res, next) => {
         updated_at: new Date().toISOString()
       });
 
-    res.json({ message: 'Password updated successfully' });
+    // Send success response
+    res.send(`
+      <html>
+      <head>
+        <title>Password Updated</title>
+        <style>
+          body { font-family: Arial; padding: 40px; background: #f5f5f5; text-align: center; }
+          .card { background: white; padding: 30px; max-width: 500px; margin: 0 auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          h2 { color: #2E7D32; }
+          .btn { display: inline-block; margin-top: 20px; padding: 12px 24px; background: #003366; color: white; text-decoration: none; border-radius: 6px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>Password Updated Successfully!</h2>
+          <p>Your password has been reset. You can now login with your new password.</p>
+          <a href="/login" class="btn">Login Now</a>
+        </div>
+      </body>
+      </html>
+    `);
   } catch (err) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
-      return res.status(400).json({
-        error: {
-          name: 'InvalidToken',
-          message: 'Invalid or expired token'
-        }
-      });
+      return res.status(400).send(`
+        <div style="text-align:center; padding:40px;">
+          <h2 style="color:#d32f2f;">Invalid or Expired Token</h2>
+          <p>The password reset link is invalid or has expired.</p>
+          <p>Please request a new <a href="/forgot-password">password reset</a>.</p>
+        </div>
+      `);
     }
     logger.error('Password reset error:', err);
     next(err);
   }
 });
+
 
 // 1. Create dedicated staff authentication middleware
 const requireStaffAuth = (req, res, next) => {
@@ -2230,7 +2582,7 @@ const requireStaffAuth = (req, res, next) => {
     return next();
   }
   logger.warn('🚫 Staff access denied - no session found');
-  res.redirect('/login');
+  res.redirect('/login');  // Added redirect to login page
 };
 
 // Project Access Middleware
