@@ -10,3 +10,5 @@
 {"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T19:33:34.431Z"}
 {"level":"error","message":"❌ Database initialization error:","timestamp":"2025-07-04T20:24:46.551Z"}
 {"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T20:24:46.552Z"}
+{"level":"error","message":"❌ Database initialization error:","timestamp":"2025-07-04T20:26:36.142Z"}
+{"level":"error","message":"❌ Index maintenance failed:","timestamp":"2025-07-04T20:26:36.144Z"}
