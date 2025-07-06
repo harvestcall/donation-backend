@@ -149,10 +149,11 @@ const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
   cookieName: "__Host-hc-csrf-token",
   cookieOptions: {
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: true, // 🔐 Force HTTPS-only
     httpOnly: true,
   },
 });
+
 
 // Apply CSRF protection middleware globally (GET + POST)
 app.use(doubleCsrfProtection);
