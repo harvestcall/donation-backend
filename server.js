@@ -1,6 +1,9 @@
 // ✅ Load environment variables
 require('dotenv').config();
 
+console.log('🔎 ENV: DATABASE_URL =', process.env.DATABASE_URL);
+
+
 // ✅ Core dependencies and modules
 const express = require('express');
 const bodyParser = require('body-parser');
