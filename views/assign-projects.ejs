@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Assign Projects to Staff</title>
+  <style nonce="<%= cspNonce %>">
+    body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 30px; }
+    h2 { text-align: center; margin-bottom: 20px; }
+    form {
+      background: white;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    label, select, input[type=submit] {
+      display: block;
+      margin-bottom: 15px;
+      width: 100%;
+    }
+    select, input[type=submit] {
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    input[type=checkbox] { margin-right: 10px; }
+    .project-item { margin-bottom: 10px; }
+    .btn {
+      background: #2E7D32;
+      color: white;
+      border: none;
+      cursor: pointer;
+      padding: 10px;
+    }
+    .btn:hover { background: #256429; }
+    a {
+      display: block;
+      text-align: center;
+      margin-top: 20px;
+      color: #003366;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>📌 Assign Projects to Staff</h2>
+
+  <form method="POST" action="/admin/assign-projects">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+    <label for="staffId">Select Staff</label>
+    <select name="staffId" required>
+      <option value="">-- Choose Staff --</option>
+      <% staff.forEach(s => { %>
+        <option value="<%= s.id %>"><%= s.name %></option>
+      <% }) %>
+    </select>
+
+    <label>Choose Project(s)</label>
+    <% projects.forEach(p => { %>
+      <div class="project-item">
+        <input type="checkbox" name="projectIds" value="<%= p.id %>" id="project-<%= p.id %>" />
+        <label for="project-<%= p.id %>"><%= p.name %></label>
+      </div>
+    <% }) %>
+
+    <input class="btn" type="submit" value="Assign Projects">
+  </form>
+
+  <a href="/admin/summary">← Back to Admin Dashboard</a>
+</body>
+</html>

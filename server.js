@@ -695,7 +695,7 @@ if (staffName && projectName) {
 
 
 
-
+// Admin Donations Fetches all donations from the database
 app.get('/admin/donations', async (req, res, next) => {
   try {
     const donations = await db('donations').orderBy('id', 'desc');
@@ -720,13 +720,16 @@ app.get('/admin/donations', async (req, res, next) => {
       const referenceEscaped = escapeHtml(reference);
       const currency = d.currency || 'NGN';
       const amount = formatCurrency(d.amount, currency);
-      const status = 'success'; // Later: make dynamic if needed
+      const status = 'success';
 
-      // ✅ Safe date handling with fallback
       const rawDate = d.created_at || d.timestamp;
       let displayDate = 'Unknown';
       try {
-        displayDate = new Date(rawDate).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric'
+        displayDate = new Date(rawDate).toLocaleDateString('en-US', {
+          timeZone: 'UTC',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
         });
       } catch {}
 
@@ -749,225 +752,16 @@ app.get('/admin/donations', async (req, res, next) => {
       `;
     }).join('');
 
-    res.send(`
-      
-      <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Donations Admin Dashboard</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-  <style>
-    :root {
-      --primary: #003366;
-      --secondary: #2E7D32;
-      --accent: #E67E22;
-      --light-bg: #f8f9fa;
-      --border: #dee2e6;
-      --text: #333;
-      --danger: #dc3545;
-    }
-
-    body {
-      background-color: var(--light-bg);
-      color: var(--text);
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-
-    .admin-container {
-      max-width: 1400px;
-      margin: auto;
-      padding: 20px;
-    }
-
-    .admin-header {
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      color: white;
-      padding: 20px;
-      border-radius: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30px;
-    }
-
-    .admin-title {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-    }
-
-    .admin-title i {
-      font-size: 2rem;
-      background: rgba(255, 255, 255, 0.2);
-      padding: 12px;
-      border-radius: 50%;
-    }
-
-    .admin-controls {
-      display: flex;
-      gap: 10px;
-    }
-
-    .admin-btn {
-      padding: 10px 16px;
-      background: white;
-      color: var(--primary);
-      border: none;
-      border-radius: 5px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .admin-btn:hover {
-      background: #e6f7e9;
-    }
-
-    .admin-btn.logout {
-      background: var(--danger);
-      color: white;
-    }
-
-    .admin-btn.logout:hover {
-      background: #c82333;
-    }
-
-    .donations-table {
-      background: white;
-      border-radius: 8px;
-      overflow-x: auto;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 1000px;
-    }
-
-    thead {
-      background: var(--primary);
-      color: white;
-    }
-
-    th, td {
-      padding: 14px;
-      border-bottom: 1px solid var(--border);
-      text-align: left;
-      font-size: 0.95rem;
-    }
-
-    tbody tr:nth-child(even) {
-      background-color: #f9f9f9;
-    }
-
-    .status {
-      display: inline-block;
-      padding: 5px 10px;
-      border-radius: 12px;
-      font-size: 0.85rem;
-      font-weight: 500;
-    }
-
-    .status.success {
-      background: #d4edda;
-      color: #155724;
-    }
-
-    .actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    .action-btn {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      border: none;
-      background: #e9ecef;
-      color: var(--text);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .action-btn:hover {
-      background: var(--accent);
-      color: white;
-    }
-  </style>
-</head>
-<body>
-  <div class="admin-container">
-    <div class="admin-header">
-      <div class="admin-title">
-        <i class="fas fa-hand-holding-heart"></i>
-        <h1>Donation Records - Harvest Call Africa</h1>
-      </div>
-      <div class="admin-controls">
-        <button class="admin-btn"><i class="fas fa-download"></i> Export CSV</button>
-        <button class="admin-btn logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
-      </div>
-    </div>
-
-    <div class="donations-table">
-      <table>
-        <thead>
-          <tr>
-            <th>Donor</th>
-            <th>Email</th>
-            <th>Amount</th>
-            <th>Currency</th>
-            <th>Purpose</th>
-            <th>Type</th>
-            <th>Reference</th>
-            <th>Date</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${tableRows}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <script>
-    document.querySelector('.admin-btn').addEventListener('click', function () {
-      alert('CSV export functionality would be implemented here');
+    res.render('admin-donations', {
+      cspNonce: res.locals.cspNonce,
+      tableRows
     });
 
-    document.querySelector('.logout').addEventListener('click', function () {
-      alert('This would log out the user in a real system');
-    });
-
-    document.querySelectorAll('.action-btn').forEach(btn => {
-      btn.addEventListener('click', function () {
-        const icon = this.querySelector('i').className;
-        if (icon.includes('fa-eye')) {
-          alert('View donation details');
-        } else if (icon.includes('fa-receipt')) {
-          alert('Download or resend receipt');
-        }
-      });
-    });
-  </script>
-</body>
-</html>`);
-  }  catch (error) {
-    logger.error('❌ Error loading admin dashboard:', error.message);
-    next(new DatabaseError('Failed to load admin donations'));
+  } catch (err) {
+    next(err);
   }
 });
+
 
 // Get all active staff
 app.get('/staff', async (req, res, next) => {
@@ -1007,34 +801,27 @@ app.get('/admin/summary',
       const monthStart = new Date(Date.UTC(year, month - 1, 1));
       const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
-      // PARALLEL DATABASE QUERIES
       const [allStaff, allProjects, aggregatedData, rawDonations] = await Promise.all([
         db('staff').select('id', 'name', 'active'),
         db('projects').select('id', 'name'),
-        
-        // Aggregated summary data
         db('donations')
           .select(
             db.raw("CASE WHEN metadata->>'staffId' ~ '^\\d+$' THEN (metadata->>'staffId')::integer ELSE NULL END as staff_id"),
             db.raw("CASE WHEN metadata->>'projectId' ~ '^\\d+$' THEN (metadata->>'projectId')::integer ELSE NULL END as project_id"),
             db.raw('SUM(amount) as total_amount'),
             db.raw('COUNT(DISTINCT email) as donor_count')
-            )
-            .whereBetween('created_at', [monthStart, monthEnd])
-             .groupBy('staff_id', 'project_id'),
-        
-        // Raw donations just for donor emails
+          )
+          .whereBetween('created_at', [monthStart, monthEnd])
+          .groupBy('staff_id', 'project_id'),
         db('donations')
           .select('email')
           .whereBetween('created_at', [monthStart, monthEnd])
           .distinct('email')
       ]);
 
-      // Create lookup maps
       const staffMap = new Map(allStaff.map(s => [s.id, s]));
       const projectMap = new Map(allProjects.map(p => [p.id, p]));
 
-      // Build summary from aggregated data
       const summary = {
         total: 0,
         totalStaff: 0,
@@ -1047,7 +834,6 @@ app.get('/admin/summary',
         const amount = row.total_amount / 100;
         summary.total += amount;
 
-        // Handle staff donations (priority over projects)
         if (row.staff_id && staffMap.has(row.staff_id)) {
           const staff = staffMap.get(row.staff_id);
           if (staff.active) {
@@ -1059,9 +845,7 @@ app.get('/admin/summary',
             };
             summary.records[key].total += amount;
           }
-        }
-        // Handle project donations (only if no staff ID)
-        else if (row.project_id && projectMap.has(row.project_id)) {
+        } else if (row.project_id && projectMap.has(row.project_id)) {
           summary.totalProject += amount;
           const project = projectMap.get(row.project_id);
           const key = `project-${project.id}`;
@@ -1076,7 +860,6 @@ app.get('/admin/summary',
       const donorCount = summary.donors.size;
       const avgGift = donorCount ? (summary.total / donorCount).toFixed(2) : 0;
 
-      // Replace the existing date calculation with this corrected version:
       const prevMonth = new Date(current);
       prevMonth.setUTCMonth(prevMonth.getUTCMonth() - 1);
       const nextMonth = new Date(current);
@@ -1085,563 +868,42 @@ app.get('/admin/summary',
       const format = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
       const prev = format(prevMonth);
       const next = format(nextMonth);
-      const title = current.toLocaleString('default', { 
-        year: 'numeric', 
-        month: 'long', 
-        timeZone: 'UTC' 
+      const title = current.toLocaleString('default', {
+        year: 'numeric',
+        month: 'long',
+        timeZone: 'UTC'
       });
-// Generate beautiful HTML dashboard
-    const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Donation Summary Dashboard - Harvest Call Ministries</title>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        <style>
-            :root {
-                --primary: #003366;
-                --secondary: #2E7D32;
-                --accent: #E67E22;
-                --light-bg: #f8f9fa;
-                --card-bg: #ffffff;
-                --text: #333333;
-                --text-light: #6c757d;
-                --border: #e0e0e0;
-                --success: #28a745;
-                --info: #17a2b8;
-                --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            }
-            
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            }
-            
-            body {
-                background-color: var(--light-bg);
-                color: var(--text);
-                line-height: 1.6;
-                padding: 20px;
-            }
-            
-            .dashboard-container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            
-            .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 30px;
-                padding-bottom: 20px;
-                border-bottom: 1px solid var(--border);
-            }
-            
-            .logo-container {
-                display: flex;
-                align-items: center;
-                gap: 15px;
-            }
-            
-            .logo {
-                width: 50px;
-                height: 50px;
-                background: linear-gradient(135deg, var(--primary), var(--secondary));
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: white;
-                font-size: 22px;
-            }
-            
-            .title-container h1 {
-                color: var(--primary);
-                font-size: 28px;
-                font-weight: 700;
-                margin-bottom: 5px;
-            }
-            
-            .title-container p {
-                color: var(--text-light);
-                font-size: 16px;
-            }
-            
-            .controls {
-                display: flex;
-                gap: 15px;
-            }
-            
-            .btn {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 10px 15px;
-                background: var(--primary);
-                color: white;
-                text-decoration: none;
-                border-radius: 6px;
-                font-weight: 500;
-                transition: all 0.3s;
-            }
-            
-            .btn:hover {
-                background: #002244;
-                transform: translateY(-2px);
-                box-shadow: var(--shadow);
-            }
-            
-            .month-nav {
-                display: flex;
-                align-items: center;
-                gap: 15px;
-                background: var(--card-bg);
-                border-radius: 10px;
-                padding: 15px 20px;
-                box-shadow: var(--shadow);
-                margin-bottom: 30px;
-            }
-            
-            .nav-btn {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                background: var(--light-bg);
-                color: var(--primary);
-                border: none;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                font-size: 18px;
-                text-decoration: none;
-            }
-            
-            .nav-btn:hover {
-                background: var(--primary);
-                color: white;
-                transform: translateY(-2px);
-            }
-            
-            .current-month {
-                font-size: 24px;
-                font-weight: 600;
-                color: var(--primary);
-                flex-grow: 1;
-                text-align: center;
-            }
-            
-            .kpi-cards {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
-            }
-            
-            .kpi-card {
-                background: var(--card-bg);
-                border-radius: 15px;
-                padding: 25px;
-                box-shadow: var(--shadow);
-                text-align: center;
-                transition: transform 0.3s ease;
-            }
-            
-            .kpi-card:hover {
-                transform: translateY(-5px);
-            }
-            
-            .kpi-icon {
-                width: 60px;
-                height: 60px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0 auto 15px;
-                font-size: 24px;
-            }
-            
-            .total .kpi-icon {
-                background: rgba(40, 167, 69, 0.15);
-                color: var(--success);
-            }
-            
-            .staff .kpi-icon {
-                background: rgba(231, 126, 34, 0.15);
-                color: var(--accent);
-            }
-            
-            .projects .kpi-icon {
-                background: rgba(23, 162, 184, 0.15);
-                color: var(--info);
-            }
-            
-            .donors .kpi-icon {
-                background: rgba(0, 51, 102, 0.15);
-                color: var(--primary);
-            }
-            
-            .kpi-card h3 {
-                font-size: 16px;
-                color: var(--text-light);
-                margin-bottom: 10px;
-            }
-            
-            .kpi-card .value {
-                font-size: 32px;
-                font-weight: 700;
-                margin-bottom: 5px;
-            }
-            
-            .kpi-card .sub-value {
-                font-size: 16px;
-                color: var(--text-light);
-            }
-            
-            .recipients-table {
-                background: var(--card-bg);
-                border-radius: 15px;
-                overflow: hidden;
-                box-shadow: var(--shadow);
-                margin-bottom: 30px;
-            }
-            
-            .table-header {
-                padding: 20px 25px;
-                border-bottom: 1px solid var(--border);
-            }
-            
-            .table-header h2 {
-                color: var(--primary);
-                font-size: 22px;
-                font-weight: 600;
-            }
-            
-            table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            
-            thead {
-                background: #f8fafc;
-            }
-            
-            th {
-                padding: 15px 25px;
-                text-align: left;
-                color: var(--text-light);
-                font-weight: 600;
-                font-size: 14px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            
-            tbody tr {
-                border-bottom: 1px solid var(--border);
-                transition: background 0.2s ease;
-            }
-            
-            tbody tr:last-child {
-                border-bottom: none;
-            }
-            
-            tbody tr:hover {
-                background: #f8fafc;
-            }
-            
-            td {
-                padding: 15px 25px;
-                font-size: 16px;
-            }
-            
-            .recipient-name {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-            }
-            
-            .recipient-icon {
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: var(--light-bg);
-                color: var(--primary);
-                font-size: 18px;
-            }
-            
-            .staff-icon {
-                background: rgba(231, 126, 34, 0.1);
-                color: var(--accent);
-            }
-            
-            .project-icon {
-                background: rgba(23, 162, 184, 0.1);
-                color: var(--info);
-            }
-            
-            .amount {
-                font-weight: 600;
-                color: var(--primary);
-            }
-            
-            .footer {
-                text-align: center;
-                color: var(--text-light);
-                font-size: 14px;
-                padding: 20px;
-            }
-            
-            @media (max-width: 768px) {
-                .header {
-                    flex-direction: column;
-                    align-items: flex-start;
-                    gap: 20px;
-                }
-                
-                .controls {
-                    width: 100%;
-                    justify-content: center;
-                }
-                
-                .month-nav {
-                    flex-wrap: wrap;
-                }
-                
-                .kpi-cards {
-                    grid-template-columns: 1fr;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="dashboard-container">
-            <div class="header">
-                <div class="logo-container">
-                    <div class="logo">
-                        <i class="fas fa-hands-helping"></i>
-                    </div>
-                    <div class="title-container">
-                        <h1>Donation Summary Dashboard</h1>
-                        <p>${escapeHtml('Harvest Call Ministries - Monthly Contributions Report')}</p>
-                    </div>
-                </div>
-                <div class="controls">
-                    <a href="/admin/donations" class="btn">
-                        <i class="fas fa-list"></i> View All Donations
-                    </a>
-                </div>
-            </div>
-            
-            <div class="month-nav">
-                <a href="/admin/summary?month=${prev}" class="nav-btn">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
-                <div class="current-month">${escapeHtml(title)}</div>
-                <a href="/admin/summary?month=${next}" class="nav-btn">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
-            </div>
-            
-            <div class="kpi-cards">
-                <div class="kpi-card total">
-                    <div class="kpi-icon">
-                        <i class="fas fa-donate"></i>
-                    </div>
-                    <h3>Total Donations</h3>
-                    <div class="value">₦${summary.total.toLocaleString()}</div>
-                    <div class="sub-value">All Contributions</div>
-                </div>
-                
-                <div class="kpi-card staff">
-                    <div class="kpi-icon">
-                        <i class="fas fa-user-friends"></i>
-                    </div>
-                    <h3>Staff Support</h3>
-                    <div class="value">₦${summary.totalStaff.toLocaleString()}</div>
-                    <div class="sub-value">Missionary Support</div>
-                </div>
-                
-                <div class="kpi-card projects">
-                    <div class="kpi-icon">
-                        <i class="fas fa-project-diagram"></i>
-                    </div>
-                    <h3>Project Funding</h3>
-                    <div class="value">₦${summary.totalProject.toLocaleString()}</div>
-                    <div class="sub-value">Ministry Projects</div>
-                </div>
-                
-                <div class="kpi-card donors">
-                    <div class="kpi-icon">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <h3>Donors</h3>
-                    <div class="value">${donorCount}</div>
-                    <div class="sub-value">Avg Gift: ₦${avgGift}</div>
-                </div>
-            </div>
-            
-            <div class="recipients-table">
-                <div class="table-header">
-                    <h2><i class="fas fa-list"></i> Recipient Breakdown</h2>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Recipient</th>
-                            <th>Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${Object.values(summary.records).map(r => `
-                            <tr>
-                                <td>
-                                    <div class="recipient-name">
-                                        <div class="recipient-icon ${r.label.includes('Staff') ? 'staff-icon' : 'project-icon'}">
-                                            <i class="fas ${r.label.includes('Staff') ? 'fa-user' : 'fa-project-diagram'}"></i>
-                                        </div>
-                                        <div>${escapeHtml(r.label)}</div>
-                                    </div>
-                                </td>
-                                <td class="amount">₦${r.total.toLocaleString()}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="footer">
-                <p>Harvest Call Ministries • Generated on ${escapeHtml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }))}</p>
-            </div>
-        </div>
-        
-        <script>
-            // Add loading indicator during navigation
-            document.querySelectorAll('.nav-btn').forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                    // Show loading indicator
-                    document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><div class="logo" style="animation: spin 1s linear infinite;"><i class="fas fa-spinner"></i></div></div>';
-                    // Add spinner animation
-                    document.head.innerHTML += '<style>@keyframes spin {100% {transform: rotate(360deg);}}</style>';
-                });
-            });
-        </script>
-    </body>
-    </html>
-    `;
 
-    res.send(html);
-  } catch (err) {
-    logger.error('❌ Summary route error:', err.message, err.stack);
-    next(err);
+      res.render('admin-summary', {
+        cspNonce: res.locals.cspNonce,
+        summary,
+        donorCount,
+        avgGift,
+        prev,
+        next,
+        title
+      });
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
+
+
 
 // View and manage staff accounts (/admin/staff)
 app.get('/admin/staff', requireAuth, async (req, res, next) => {
   try {
     const staffList = await db('staff').orderBy('name');
-
-    const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Manage Staff – Harvest Call Admin</title>
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          padding: 40px;
-          background: #f8f9fa;
-          color: #333;
-        }
-        h1 {
-          color: #003366;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 20px;
-        }
-        th, td {
-          padding: 12px;
-          border: 1px solid #ccc;
-        }
-        th {
-          background: #003366;
-          color: white;
-          text-align: left;
-        }
-        tr:nth-child(even) {
-          background-color: #f2f2f2;
-        }
-        .btn {
-          display: inline-block;
-          padding: 6px 12px;
-          background-color: #2E7D32;
-          color: white;
-          text-decoration: none;
-          border-radius: 4px;
-          font-size: 14px;
-        }
-        .inactive {
-          background-color: #888;
-        }
-        .top-link {
-          margin-bottom: 20px;
-          display: inline-block;
-        }
-      </style>
-    </head>
-    <body>
-      <h1><i class="fas fa-users"></i> Staff Management</h1>
-      <a class="top-link btn" href="/admin/add-staff-account">+ Add New Staff</a>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${staffList.map(s => `
-            <tr>
-              <td>${escapeHtml(s.name)}</td>
-              <td>${escapeHtml(s.email)}</td>
-              <td>${s.active ? 'Active' : 'Inactive'}</td>
-              <td>
-                <form method="POST" action="/admin/toggle-staff/${s.id}" style="display:inline;">
-                  <button class="btn ${s.active ? 'inactive' : ''}" type="submit">
-                    ${s.active ? 'Mark Inactive' : 'Reactivate'}
-                  </button>
-                </form>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </body>
-    </html>
-    `;
-
-    res.send(html);
+    res.render('admin-staff', {
+      staffList,
+      cspNonce: res.locals.cspNonce
+    });
   } catch (err) {
-  next(new DatabaseError('Failed to load staff list'));
-}
+    next(new DatabaseError('Failed to load staff list'));
+  }
 });
+
 
 app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
   try {
@@ -1685,65 +947,15 @@ app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
 app.get('/admin/projects', requireAuth, async (req, res, next) => {
   try {
     const projects = await db('projects').orderBy('created_at', 'desc');
-
-    const html = `
-    <html>
-      <head>
-        <title>Manage Projects</title>
-        <style>
-          body { font-family: Arial, sans-serif; background: #f8f9fa; padding: 30px; }
-          h2 { text-align: center; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-          th, td { padding: 12px 16px; border-bottom: 1px solid #ddd; text-align: left; }
-          th { background: #003366; color: white; }
-          tr:hover { background: #f1f1f1; }
-          .status { font-weight: bold; color: green; }
-          .inactive { color: red; }
-          .btn { padding: 6px 12px; font-size: 14px; background: #E67E22; color: white; border: none; border-radius: 4px; cursor: pointer; }
-          .btn:hover { background: #d35400; }
-          .top-links { text-align: center; margin-bottom: 20px; }
-          .top-links a { margin: 0 10px; text-decoration: none; color: #003366; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <h2>📁 Project Management</h2>
-        <div class="top-links">
-          <a href="/admin/summary">← Back to Dashboard</a>
-          <a href="/admin/add-project">+ Add New Project</a>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Project Name</th>
-              <th>Description</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${projects.map(p => `
-              <tr>
-                <td>${escapeHtml(p.name)}</td>
-                <td>${escapeHtml(p.description || '-')}</td>
-                <td class="${p.active ? 'status' : 'inactive'}">${p.active ? 'Active' : 'Inactive'}</td>
-                <td>
-                  <form method="POST" action="/admin/toggle-project/${p.id}" style="display:inline;">
-                    <button class="btn" type="submit">${p.active ? 'Mark Inactive' : 'Reactivate'}</button>
-                  </form>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </body>
-    </html>
-    `;
-
-    res.send(html);
+    res.render('admin-projects', {
+      projects,
+      cspNonce: res.locals.cspNonce
+    });
   } catch (err) {
-  next(new DatabaseError('Could not load project list.'));
-}
+    next(new DatabaseError('Could not load project list.'));
+  }
 });
+
 
 // Toggle project active status
 app.post('/admin/toggle-project/:id', requireAuth, async (req, res, next) => {
@@ -1934,56 +1146,17 @@ app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
   try {
     const staff = await db('staff').where({ active: true }).orderBy('name');
     const projects = await db('projects').where({ active: true }).orderBy('name');
-
-    const html = `
-    <html>
-      <head>
-        <title>Assign Projects to Staff</title>
-        <style>
-          body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 30px; }
-          h2 { text-align: center; margin-bottom: 20px; }
-          form { background: white; padding: 20px; max-width: 600px; margin: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-          label, select, input[type=submit] { display: block; margin-bottom: 15px; width: 100%; }
-          select, input[type=submit] { padding: 10px; border-radius: 5px; border: 1px solid #ccc; }
-          input[type=checkbox] { margin-right: 10px; }
-          .project-item { margin-bottom: 10px; }
-          .btn { background: #2E7D32; color: white; border: none; cursor: pointer; }
-          .btn:hover { background: #256429; }
-          a { display: block; text-align: center; margin-top: 20px; color: #003366; text-decoration: none; }
-        </style>
-      </head>
-      <body>
-        <h2>📌 Assign Projects to Staff</h2>
-        const token = res.locals.csrfToken;
-...
-<form method="POST" action="/admin/assign-projects">
-  <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
-          <label for="staffId">Select Staff</label>
-          <select name="staffId" required>
-            <option value="">-- Choose Staff --</option>
-            ${staff.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
-          </select>
-
-          <label>Choose Project(s)</label>
-          ${projects.map(p => `
-            <div class="project-item">
-              <input type="checkbox" name="projectIds" value="${p.id}" id="project-${p.id}" />
-              <label for="project-${p.id}">${escapeHtml(p.name)}</label>
-            </div>
-          `).join('')}
-
-          <input class="btn" type="submit" value="Assign Projects">
-        </form>
-
-        <a href="/admin/summary">← Back to Admin Dashboard</a>
-      </body>
-    </html>
-    `;
-    res.send(html);
+    res.render('assign-projects', {
+      csrfToken: res.locals.csrfToken,
+      staff,
+      projects,
+      cspNonce: res.locals.cspNonce
+    });
   } catch (err) {
-  next(new DatabaseError('Failed to load project assignment form.'));
-}
+    next(new DatabaseError('Failed to load project assignment form.'));
+  }
 });
+
 
 // Handle project assignment
 app.post('/admin/assign-projects', requireAuth, async (req, res, next) => {
@@ -2421,848 +1594,81 @@ app.get('/reset-password', (req, res) => {
 });
 
 // Password reset handler
-app.post('/reset-password', async (req, res, next) => {
-  const { token, newPassword, confirmPassword } = req.body;
-  
-  // Validate input
-  if (!token || !newPassword || !confirmPassword) {
-    return res.status(400).json({
-      error: {
-        name: 'ValidationError',
-        message: 'All fields are required'
-      }
-    });
-  }
-
-  if (newPassword !== confirmPassword) {
-    return res.status(400).json({
-      error: {
-        name: 'ValidationError',
-        message: 'Passwords do not match'
-      }
-    });
-  }
-
+app.get('/staff-dashboard', requireStaffAuth, async (req, res, next) => {
   try {
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const accountId = decoded.id;
-
-    // Hash new password asynchronously
-    const newHash = await new Promise((resolve, reject) => {
-      bcrypt.hash(newPassword, BCRYPT_COST, (err, hash) => {
-        if (err) reject(new DatabaseError('Password hashing failed'));
-        resolve(hash);
-      });
-    });
-
-    // Update password
-    await db('staff_accounts')
-      .where('id', accountId)
-      .update({ 
-        password_hash: newHash,
-        updated_at: new Date().toISOString()
-      });
-
-    // Send success response
-    res.send(`
-      <html>
-      <head>
-        <title>Password Updated</title>
-        <style>
-          body { font-family: Arial; padding: 40px; background: #f5f5f5; text-align: center; }
-          .card { background: white; padding: 30px; max-width: 500px; margin: 0 auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-          h2 { color: #2E7D32; }
-          .btn { display: inline-block; margin-top: 20px; padding: 12px 24px; background: #003366; color: white; text-decoration: none; border-radius: 6px; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <h2>Password Updated Successfully!</h2>
-          <p>Your password has been reset. You can now login with your new password.</p>
-          <a href="/login" class="btn">Login Now</a>
-        </div>
-      </body>
-      </html>
-    `);
-  } catch (err) {
-    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
-      return res.status(400).send(`
-        <div style="text-align:center; padding:40px;">
-          <h2 style="color:#d32f2f;">Invalid or Expired Token</h2>
-          <p>The password reset link is invalid or has expired.</p>
-          <p>Please request a new <a href="/forgot-password">password reset</a>.</p>
-        </div>
-      `);
-    }
-    logger.error('Password reset error:', err);
-    next(err);
-  }
-});
-
-
-// 1. Create dedicated staff authentication middleware
-const requireStaffAuth = (req, res, next) => {
-  if (req.session?.staffId) {
-    logger.info(`🔒 Staff authenticated: ${req.session.staffId}`);
-    return next();
-  }
-  logger.warn('🚫 Staff access denied - no session found');
-  res.redirect('/login');  // Added redirect to login page
-};
-
-// Project Access Middleware
-const checkProjectAccess = async (req, res, next) => {
-  try {
-    const staffId = req.session.staffId;
-    const projectId = req.query.projectId;
-
-    // Validate session
-    if (!staffId) {
-      return res.status(401).send('Authentication required');
-    }
-     // Validate project ID
-    if (!projectId) {
-      return res.status(400).send('Project ID is required');
-    }
-
-    // Convert to number and validate
-    const numericProjectId = parseInt(projectId);
-    if (isNaN(numericProjectId)) {
-      return res.status(400).send('Invalid Project ID');
-    }
-
-    // Check database assignment
-    const assignment = await db('staff_projects')
-      .where({
-        staff_id: staffId,
-        project_id: numericProjectId
-      })
-      .first();
-
-    if (!assignment) {
-      logger.warn(`🚫 Unauthorized project access: Staff ${staffId} to Project ${projectId}`);
-      return res.status(403).send('You do not have permission to view this project');
-    }
-
-    // Attach project ID to request for later use
-    req.projectId = numericProjectId;
-    next();
-  } catch (err) {
-  next(new AppError('Server error during authorization', 500));
-}
-};
-
-// 2. Updated staff dashboard route
-app.get('/staff-dashboard', requireStaffAuth, async (req, res) => {
-  try {
-    // Get staffId from session instead of query parameter
     const staffId = req.session.staffId;
     const monthParam = req.query.month;
 
-    // Validate staff exists
     const staff = await db('staff').where('id', staffId).first();
     if (!staff) {
       logger.error(`❌ Staff not found: ${staffId}`);
       return res.status(404).send('Staff not found');
     }
 
-    // Date handling
-// Replace in /staff-dashboard route:
-const today = new Date();
-const current = monthParam
-  ? new Date(`${monthParam}-01T00:00:00.000Z`)
-  : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-const monthKey = current.toLocaleString('default', { 
-  year: 'numeric', 
-  month: 'long',
-  timeZone: 'UTC'
-});
+    const today = new Date();
+    const current = monthParam
+      ? new Date(`${monthParam}-01T00:00:00.000Z`)
+      : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const monthKey = current.toLocaleString('default', {
+      year: 'numeric',
+      month: 'long',
+      timeZone: 'UTC'
+    });
 
-    
-    // Calculate date range
     const monthStart = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
-const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
-    // Get donations
-    // ✅ Solution: Push filtering to the database
-const donations = await db('donations')
-  .where('metadata->>staffId', staffId.toString())  // Direct DB filter
-  .whereBetween('created_at', [monthStart, monthEnd])
-  .orderBy('created_at', 'desc');
+    const donations = await db('donations')
+      .where('metadata->>staffId', staffId.toString())
+      .whereBetween('created_at', [monthStart, monthEnd])
+      .orderBy('created_at', 'desc');
 
-    // Filter donations
     const filtered = donations.filter(d => {
-  try {
-    const rawDate = d.created_at || d.timestamp;
-    if (!rawDate) return false;
+      try {
+        const rawDate = d.created_at || d.timestamp;
+        if (!rawDate) return false;
 
-    const parsedDate = new Date(rawDate);
-    if (!(parsedDate >= monthStart && parsedDate <= monthEnd)) return false;
+        const parsedDate = new Date(rawDate);
+        if (!(parsedDate >= monthStart && parsedDate <= monthEnd)) return false;
 
-    function safeParseMetadata(metadata) {
-  try {
-    const parsed = typeof metadata === 'string' 
-      ? JSON.parse(metadata) 
-      : metadata;
-    return metadataSchema.validate(parsed).value || {};
-  } catch (e) {
-    return {};
-  }
-}
+        const metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+        return metadata.staffId == staffId;
+      } catch (err) {
+        logger.error('❌ Bad donation entry:', d);
+        return false;
+      }
+    });
 
-    return metadata.staffId == staffId;
-  } catch (err) {
-    logger.error('❌ Bad donation entry:', d);
-    return false;
-  }
-});
-
-
-    // Calculate totals
     const totalAmount = filtered.reduce((sum, d) => sum + d.amount, 0) / 100;
     const donorCount = new Set(filtered.map(d => d.email)).size;
-    const avgDonation = donorCount > 0 
-      ? (totalAmount / donorCount).toFixed(2) 
-      : 0;
+    const avgDonation = donorCount > 0 ? (totalAmount / donorCount).toFixed(2) : 0;
 
-    // Month navigation helpers
-    const formatMonth = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-    const prev = formatMonth(new Date(current.getFullYear(), current.getMonth() - 1, 1));
-    const next = formatMonth(new Date(current.getFullYear(), current.getMonth() + 1, 1));
+    const formatMonth = date =>
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    const prev = formatMonth(new Date(current.getUTCFullYear(), current.getUTCMonth() - 1, 1));
+    const next = formatMonth(new Date(current.getUTCFullYear(), current.getUTCMonth() + 1, 1));
 
-    
-    // Generate beautiful HTML dashboard
-    const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(staff.name)} - Staff Dashboard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary: #003366;
-            --secondary: #2E7D32;
-            --accent: #E67E22;
-            --light-bg: #f8f9fa;
-            --card-bg: #ffffff;
-            --text: #333333;
-            --text-light: #6c757d;
-            --border: #e0e0e0;
-            --success: #28a745;
-            --info: #17a2b8;
-            --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        body {
-            background-color: var(--light-bg);
-            color: var(--text);
-            line-height: 1.6;
-            padding: 20px;
-        }
-        
-        .dashboard-container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .staff-header {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .staff-avatar {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 36px;
-            font-weight: 600;
-        }
-        
-        .staff-info h1 {
-            color: var(--primary);
-            font-size: 28px;
-            margin-bottom: 5px;
-        }
-        
-        .staff-info p {
-            color: var(--text-light);
-            font-size: 16px;
-        }
-        
-        .controls {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 15px;
-            background: var(--primary);
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-            font-weight: 500;
-            transition: all 0.3s;
-        }
-        
-        .btn:hover {
-            background: #002244;
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
-        }
-        
-        /* Project selector styles */
-        .project-selector {
-            background: var(--card-bg);
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 30px;
-            box-shadow: var(--shadow);
-        }
-        
-        .project-selector h3 {
-            color: var(--primary);
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .project-selector select {
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            font-size: 16px;
-            background: white;
-            transition: border-color 0.3s;
-        }
-        
-        .project-selector select:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.2);
-        }
-        
-        .month-nav {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: var(--card-bg);
-            border-radius: 10px;
-            padding: 15px 20px;
-            box-shadow: var(--shadow);
-            margin-bottom: 30px;
-        }
-        
-        .nav-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--light-bg);
-            color: var(--primary);
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 18px;
-            text-decoration: none;
-        }
-        
-        .nav-btn:hover {
-            background: var(--primary);
-            color: white;
-            transform: translateY(-2px);
-        }
-        
-        .current-month {
-            font-size: 24px;
-            font-weight: 600;
-            color: var(--primary);
-            flex-grow: 1;
-            text-align: center;
-        }
-        
-        .kpi-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .kpi-card {
-            background: var(--card-bg);
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: var(--shadow);
-            text-align: center;
-            transition: transform 0.3s ease;
-        }
-        
-        .kpi-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .kpi-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 15px;
-            font-size: 24px;
-        }
-        
-        .total .kpi-icon {
-            background: rgba(40, 167, 69, 0.15);
-            color: var(--success);
-        }
-        
-        .donations-count .kpi-icon {
-            background: rgba(231, 126, 34, 0.15);
-            color: var(--accent);
-        }
-        
-        .donors .kpi-icon {
-            background: rgba(23, 162, 184, 0.15);
-            color: var(--info);
-        }
-        
-        .avg-gift .kpi-icon {
-            background: rgba(0, 51, 102, 0.15);
-            color: var(--primary);
-        }
-        
-        .kpi-card h3 {
-            font-size: 16px;
-            color: var(--text-light);
-            margin-bottom: 10px;
-        }
-        
-        .kpi-card .value {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-        
-        .kpi-card .sub-value {
-            font-size: 16px;
-            color: var(--text-light);
-        }
-        
-        .donations-table {
-            background: var(--card-bg);
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            margin-bottom: 30px;
-        }
-        
-        .table-header {
-            padding: 20px 25px;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .table-header h2 {
-            color: var(--primary);
-            font-size: 22px;
-            font-weight: 600;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        thead {
-            background: #f8fafc;
-        }
-        
-        th {
-            padding: 15px 25px;
-            text-align: left;
-            color: var(--text-light);
-            font-weight: 600;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        tbody tr {
-            border-bottom: 1px solid var(--border);
-            transition: background 0.2s ease;
-        }
-        
-        tbody tr:last-child {
-            border-bottom: none;
-        }
-        
-        tbody tr:hover {
-            background: #f8fafc;
-        }
-        
-        td {
-            padding: 15px 25px;
-            font-size: 16px;
-        }
-        
-        .donor-name {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .donor-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0, 51, 102, 0.1);
-            color: var(--primary);
-            font-size: 18px;
-        }
-        
-        .amount {
-            font-weight: 600;
-            color: var(--primary);
-        }
-        
-        .type {
-            font-size: 14px;
-            padding: 4px 10px;
-            border-radius: 20px;
-            background: #e8f5e9;
-            color: #2E7D32;
-            display: inline-block;
-        }
-        
-        .type.one-time {
-            background: #e3f2fd;
-            color: #1565c0;
-        }
-        
-        .reference {
-            font-family: monospace;
-            font-size: 14px;
-            color: var(--text-light);
-        }
-        
-        .no-donations {
-            text-align: center;
-            padding: 40px;
-            color: var(--text-light);
-        }
-        
-        .no-donations i {
-            font-size: 48px;
-            color: #e0e0e0;
-            margin-bottom: 20px;
-        }
-        
-        .no-donations h3 {
-            font-size: 24px;
-            margin-bottom: 10px;
-            color: var(--text);
-        }
-        
-        .no-donations p {
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        
-        .footer {
-            text-align: center;
-            color: var(--text-light);
-            font-size: 14px;
-            padding: 20px;
-        }
-        
-        @media (max-width: 768px) {
-            .header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 20px;
-            }
-            
-            .staff-header {
-                flex-direction: column;
-                text-align: center;
-                gap: 15px;
-            }
-            
-            .controls {
-                width: 100%;
-                justify-content: center;
-            }
-            
-            .month-nav {
-                flex-wrap: wrap;
-            }
-            
-            .kpi-cards {
-                grid-template-columns: 1fr;
-            }
-            
-            table {
-                display: block;
-                overflow-x: auto;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="dashboard-container">
-        <div class="header">
-            <div class="staff-header">
-                <div class="staff-avatar">${staff.name.charAt(0)}</div>
-                <div class="staff-info">
-                    <h1>${escapeHtml(staff.name)}</h1>
-                    <p>Staff Support Dashboard</p>
-                </div>
-            </div>
-            <div class="controls">
-                <a href="/" class="btn">
-                    <i class="fas fa-home"></i> Main Dashboard
-                </a>
-            </div>
-        </div>
-        
-        <!-- Project Selector Section -->
-        <div class="project-selector">
-            <h3><i class="fas fa-project-diagram"></i> View Project Dashboard</h3>
-            <select id="project-select">
-                <option value="">Loading projects...</option>
-            </select>
-        </div>
-        
-        <div class="month-nav">
-            <a href="/staff-dashboard?month=${prev}" class="nav-btn">
-                <i class="fas fa-chevron-left"></i>
-            </a>
-            <div class="current-month">${escapeHtml(monthKey)}</div>
-            <a href="/staff-dashboard?month=${next}" class="nav-btn">
-                <i class="fas fa-chevron-right"></i>
-            </a>
-        </div>
-        
-        <div class="kpi-cards">
-            <div class="kpi-card total">
-                <div class="kpi-icon">
-                    <i class="fas fa-donate"></i>
-                </div>
-                <h3>Total Support</h3>
-                <div class="value">₦${totalAmount.toLocaleString()}</div>
-                <div class="sub-value">Amount Raised</div>
-            </div>
-            
-            <div class="kpi-card donations-count">
-                <div class="kpi-icon">
-                    <i class="fas fa-hand-holding-heart"></i>
-                </div>
-                <h3>Donations</h3>
-                <div class="value">${filtered.length}</div>
-                <div class="sub-value">Received This Month</div>
-            </div>
-            
-            <div class="kpi-card donors">
-                <div class="kpi-icon">
-                    <i class="fas fa-users"></i>
-                </div>
-                <h3>Supporters</h3>
-                <div class="value">${donorCount}</div>
-                <div class="sub-value">Individual Donors</div>
-            </div>
-            
-            <div class="kpi-card avg-gift">
-                <div class="kpi-icon">
-                    <i class="fas fa-chart-line"></i>
-                </div>
-                <h3>Average Gift</h3>
-                <div class="value">₦${avgDonation}</div>
-                <div class="sub-value">Per Supporter</div>
-            </div>
-        </div>
-        
-        <div class="donations-table">
-            <div class="table-header">
-                <h2><i class="fas fa-list"></i> Donation Details</h2>
-            </div>
-            
-            ${
-                filtered.length === 0 
-                    ? `<div class="no-donations">
-                        <i class="fas fa-inbox"></i>
-                        <h3>No Donations This Month</h3>
-                        <p>Your supporters haven't made any contributions for ${escapeHtml(monthKey)} yet. Share your ministry story to encourage giving!</p>
-                    </div>`
-                    : `<table>
-                        <thead>
-                            <tr>
-                                <th>Supporter</th>
-                                <th>Amount</th>
-                                <th>Type</th>
-                                <th>Reference</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${filtered.map(d => {
-  // ✅ Safely parse metadata
-  let metadata = {};
-  try {
-    metadata = typeof d.metadata === 'string' 
-      ? JSON.parse(d.metadata) 
-      : d.metadata || {};
+    res.render('staff-dashboard', {
+      cspNonce: res.locals.cspNonce,
+      staff,
+      donations: filtered,
+      donorCount,
+      avgDonation,
+      totalAmount,
+      prev,
+      next,
+      title: monthKey
+    });
+
   } catch (err) {
-    logger.error('❌ Metadata parse error for donation ID', d.id);
+    logger.error('❌ Staff dashboard error:', err);
+    next(new AppError('Failed to load staff dashboard', 500));
   }
-
-  // ✅ Safe and formatted date
- // Consistent UTC handling
-const monthStart = new Date(Date.UTC(year, month - 1, 1));
-const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
-
-// Proper UTC formatting
-const formattedDate = new Date(rawDate).toLocaleDateString('en-US', {
-  timeZone: 'UTC',
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric'
-});
-
-// Correct month navigation
-function getPrevMonth(date) {
-  const d = new Date(date);
-  d.setUTCMonth(d.getUTCMonth() - 1);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-  
-
-  // Continue with rendering...
-
-                                return `<tr>
-                                    <td>
-                                        <div class="donor-name">
-                                            <div class="donor-icon">
-                                                <i class="fas fa-user"></i>
-                                            </div>
-                                            <div>${escapeHtml(metadata.donorName || 'Anonymous Supporter')}</div>
-                                        </div>
-                                    </td>
-                                    <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
-                                    <td>${escapeHtml(metadata.donationType || 'one-time')}</td>
-                                    <td class="reference">${escapeHtml(d.reference)}</td>
-                                    <td>${donationDate.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })}</td>
-                                </tr>`;
-                            }).join('')}
-                        </tbody>
-                    </table>`
-            }
-        </div>
-        
-        <div class="footer">
-           <p>Harvest Call Ministries • Generated on ${escapeHtml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }))}</p>
-        </div>
-    </div>
-    
-    <script>
-        // Project Dashboard Navigation
-        function viewProjectDashboard(projectId) {
-            if (projectId) {
-                window.location.href = '/project-dashboard?projectId=' + projectId;
-            }
-        }
-        
-        // Load accessible projects
-        async function loadProjects() {
-            try {
-                const response = await fetch('/api/accessible-projects');
-                
-                if (!response.ok) {
-                    throw new Error('Failed to load projects');
-                }
-                
-                const projects = await response.json();
-                const select = document.getElementById('project-select');
-                
-                // Build options using string concatenation
-                let optionsHTML = '<option value="">-- Select Project --</option>';
-                projects.forEach(project => {
-                    optionsHTML += '<option value="' + project.id + '">' + project.name + '</option>';
-                });
-                
-                select.innerHTML = optionsHTML;
-                
-                // Add change event listener
-                select.addEventListener('change', function() {
-                    viewProjectDashboard(this.value);
-                });
-                
-            } catch (error) {
-                logger.error('Project load error:', error);
-                const select = document.getElementById('project-select');
-                select.innerHTML = '<option value="">Failed to load projects</option>';
-            }
-        }
-        
-        // Navigation loading indicator
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                // Show loading indicator
-                document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><div style="animation: spin 1s linear infinite; width: 60px; height: 60px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center;"><i class="fas fa-spinner" style="font-size: 30px; color: #003366;"></i></div><style>@keyframes spin {100% {transform: rotate(360deg);}}</style></div>';
-            });
-        });
-        
-        // Load projects when page is ready
-        document.addEventListener('DOMContentLoaded', loadProjects);
-    </script>
-</body>
-</html>
-`;
-    res.send(html);
-  } catch (err) {
-  next(new AppError('Failed to load staff dashboard', 500));
-}
 });
 
 
 // Project-Specific Dashboard
-app.get('/project-dashboard', 
-  requireStaffAuth,    // First check staff is logged in 
-  checkProjectAccess,  // Then check project permission
-  async (req, res, next) => {
+app.get('/project-dashboard', requireStaffAuth, checkProjectAccess, async (req, res, next) => {
   try {
     const projectId = req.projectId;
     const monthParam = req.query.month;
@@ -3275,17 +1681,17 @@ app.get('/project-dashboard',
     if (!project) return res.status(404).send('Project not found');
 
     const current = monthParam
-  ? new Date(`${monthParam}-01T00:00:00.000Z`)
-  : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+      ? new Date(`${monthParam}-01T00:00:00.000Z`)
+      : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
 
-const monthKey = current.toLocaleString('default', {
-  year: 'numeric',
-  month: 'long',
-  timeZone: 'UTC'
-});
+    const monthKey = current.toLocaleString('default', {
+      year: 'numeric',
+      month: 'long',
+      timeZone: 'UTC'
+    });
 
-const monthStart = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
-const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    const monthStart = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
     const donations = await db('donations')
       .whereBetween('created_at', [monthStart.toISOString(), monthEnd.toISOString()])
@@ -3293,603 +1699,46 @@ const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth
       .orderBy('created_at', 'desc');
 
     const filtered = donations.filter(d => {
-  try {
-    function safeParseMetadata(metadata) {
-  try {
-    const parsed = typeof metadata === 'string' 
-      ? JSON.parse(metadata) 
-      : metadata;
-    return metadataSchema.validate(parsed).value || {};
-  } catch (e) {
-    return {};
-  }
-}
+      try {
+        const metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+        return String(metadata.projectId) === String(projectId);
+      } catch (err) {
+        logger.error('❌ Bad metadata in donation ID', d.id, ':', d.metadata);
+        return false;
+      }
+    });
 
-    // Coerce both sides to string for safe comparison
-    return String(metadata.projectId) === String(projectId);
-  } catch (err) {
-    logger.error('❌ Bad metadata in donation ID', d.id, ':', d.metadata);
-    return false;
-  }
-});
-
-
-    // Calculate totals
     const totalAmount = filtered.reduce((sum, d) => sum + d.amount, 0) / 100;
     const donorCount = new Set(filtered.map(d => d.email)).size;
     const avgDonation = donorCount > 0 ? (totalAmount / donorCount).toFixed(2) : 0;
 
-    // Month navigation helpers
-    const prevMonthDate = new Date(current);
-prevMonthDate.setUTCMonth(prevMonthDate.getUTCMonth() - 1);
-const prev = `${prevMonthDate.getUTCFullYear()}-${String(prevMonthDate.getUTCMonth() + 1).padStart(2, '0')}`;
+    const prevDate = new Date(current);
+    prevDate.setUTCMonth(prevDate.getUTCMonth() - 1);
+    const prev = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, '0')}`;
 
-    function nextMonth(date) {
-      const d = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
+    const nextDate = new Date(current);
+    nextDate.setUTCMonth(nextDate.getUTCMonth() + 1);
+    const next = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, '0')}`;
 
-    // Generate beautiful HTML dashboard
-    const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${escapeHtml(project.name)} - Project Dashboard</title>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        <style>
-            :root {
-                --primary: #003366;
-                --secondary: #2E7D32;
-                --accent: #E67E22;
-                --light-bg: #f8f9fa;
-                --card-bg: #ffffff;
-                --text: #333333;
-                --text-light: #6c757d;
-                --border: #e0e0e0;
-                --success: #28a745;
-                --info: #17a2b8;
-                --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            }
-            
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            }
-            
-            body {
-                background-color: var(--light-bg);
-                color: var(--text);
-                line-height: 1.6;
-                padding: 20px;
-            }
-            
-            .dashboard-container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            
-            .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 30px;
-                padding-bottom: 20px;
-                border-bottom: 1px solid var(--border);
-            }
-            
-            .project-header {
-                display: flex;
-                align-items: center;
-                gap: 20px;
-            }
-            
-            .project-icon {
-                width: 80px;
-                height: 80px;
-                border-radius: 50%;
-                background: linear-gradient(135deg, var(--primary), var(--secondary));
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: white;
-                font-size: 36px;
-            }
-            
-            .project-info h1 {
-                color: var(--primary);
-                font-size: 28px;
-                margin-bottom: 10px;
-            }
-            
-            .project-info p {
-                color: var(--text-light);
-                font-size: 16px;
-                max-width: 600px;
-            }
-            
-            .controls {
-                display: flex;
-                gap: 15px;
-            }
-            
-            .btn {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 10px 15px;
-                background: var(--primary);
-                color: white;
-                text-decoration: none;
-                border-radius: 6px;
-                font-weight: 500;
-                transition: all 0.3s;
-            }
-            
-            .btn:hover {
-                background: #002244;
-                transform: translateY(-2px);
-                box-shadow: var(--shadow);
-            }
-            
-            .month-nav {
-                display: flex;
-                align-items: center;
-                gap: 15px;
-                background: var(--card-bg);
-                border-radius: 10px;
-                padding: 15px 20px;
-                box-shadow: var(--shadow);
-                margin-bottom: 30px;
-            }
-            
-            .nav-btn {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                background: var(--light-bg);
-                color: var(--primary);
-                border: none;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                font-size: 18px;
-                text-decoration: none;
-            }
-            
-            .nav-btn:hover {
-                background: var(--primary);
-                color: white;
-                transform: translateY(-2px);
-            }
-            
-            .current-month {
-                font-size: 24px;
-                font-weight: 600;
-                color: var(--primary);
-                flex-grow: 1;
-                text-align: center;
-            }
-            
-            .kpi-cards {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
-            }
-            
-            .kpi-card {
-                background: var(--card-bg);
-                border-radius: 15px;
-                padding: 25px;
-                box-shadow: var(--shadow);
-                text-align: center;
-                transition: transform 0.3s ease;
-            }
-            
-            .kpi-card:hover {
-                transform: translateY(-5px);
-            }
-            
-            .kpi-icon {
-                width: 60px;
-                height: 60px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0 auto 15px;
-                font-size: 24px;
-            }
-            
-            .total .kpi-icon {
-                background: rgba(40, 167, 69, 0.15);
-                color: var(--success);
-            }
-            
-            .donations-count .kpi-icon {
-                background: rgba(231, 126, 34, 0.15);
-                color: var(--accent);
-            }
-            
-            .donors .kpi-icon {
-                background: rgba(23, 162, 184, 0.15);
-                color: var(--info);
-            }
-            
-            .avg-gift .kpi-icon {
-                background: rgba(0, 51, 102, 0.15);
-                color: var(--primary);
-            }
-            
-            .kpi-card h3 {
-                font-size: 16px;
-                color: var(--text-light);
-                margin-bottom: 10px;
-            }
-            
-            .kpi-card .value {
-                font-size: 32px;
-                font-weight: 700;
-                margin-bottom: 5px;
-            }
-            
-            .kpi-card .sub-value {
-                font-size: 16px;
-                color: var(--text-light);
-            }
-            
-            .donations-table {
-                background: var(--card-bg);
-                border-radius: 15px;
-                overflow: hidden;
-                box-shadow: var(--shadow);
-                margin-bottom: 30px;
-            }
-            
-            .table-header {
-                padding: 20px 25px;
-                border-bottom: 1px solid var(--border);
-            }
-            
-            .table-header h2 {
-                color: var(--primary);
-                font-size: 22px;
-                font-weight: 600;
-            }
-            
-            table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            
-            thead {
-                background: #f8fafc;
-            }
-            
-            th {
-                padding: 15px 25px;
-                text-align: left;
-                color: var(--text-light);
-                font-weight: 600;
-                font-size: 14px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            
-            tbody tr {
-                border-bottom: 1px solid var(--border);
-                transition: background 0.2s ease;
-            }
-            
-            tbody tr:last-child {
-                border-bottom: none;
-            }
-            
-            tbody tr:hover {
-                background: #f8fafc;
-            }
-            
-            td {
-                padding: 15px 25px;
-                font-size: 16px;
-            }
-            
-            .donor-name {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-            }
-            
-            .donor-icon {
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: rgba(0, 51, 102, 0.1);
-                color: var(--primary);
-                font-size: 18px;
-            }
-            
-            .amount {
-                font-weight: 600;
-                color: var(--primary);
-            }
-            
-            .type {
-                font-size: 14px;
-                padding: 4px 10px;
-                border-radius: 20px;
-                background: #e8f5e9;
-                color: #2E7D32;
-                display: inline-block;
-            }
-            
-            .type.one-time {
-                background: #e3f2fd;
-                color: #1565c0;
-            }
-            
-            .reference {
-                font-family: monospace;
-                font-size: 14px;
-                color: var(--text-light);
-            }
-            
-            .no-donations {
-                text-align: center;
-                padding: 40px;
-                color: var(--text-light);
-            }
-            
-            .no-donations i {
-                font-size: 48px;
-                color: #e0e0e0;
-                margin-bottom: 20px;
-            }
-            
-            .no-donations h3 {
-                font-size: 24px;
-                margin-bottom: 10px;
-                color: var(--text);
-            }
-            
-            .no-donations p {
-                max-width: 500px;
-                margin: 0 auto;
-            }
-            
-            .progress-container {
-                background: var(--light-bg);
-                border-radius: 12px;
-                height: 20px;
-                margin: 20px 0;
-                overflow: hidden;
-            }
-            
-            .progress-bar {
-                height: 100%;
-                background: linear-gradient(90deg, var(--primary), var(--secondary));
-                border-radius: 12px;
-                transition: width 0.5s ease;
-            }
-            
-            .funding-goal {
-                display: flex;
-                justify-content: space-between;
-                margin-top: 5px;
-                font-size: 14px;
-                color: var(--text-light);
-            }
-            
-            .footer {
-                text-align: center;
-                color: var(--text-light);
-                font-size: 14px;
-                padding: 20px;
-            }
-            
-            @media (max-width: 768px) {
-                .header {
-                    flex-direction: column;
-                    align-items: flex-start;
-                    gap: 20px;
-                }
-                
-                .project-header {
-                    flex-direction: column;
-                    text-align: center;
-                    gap: 15px;
-                }
-                
-                .controls {
-                    width: 100%;
-                    justify-content: center;
-                }
-                
-                .month-nav {
-                    flex-wrap: wrap;
-                }
-                
-                .kpi-cards {
-                    grid-template-columns: 1fr;
-                }
-                
-                table {
-                    display: block;
-                    overflow-x: auto;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="dashboard-container">
-            <div class="header">
-                <div class="project-header">
-                    <div class="project-icon">
-                        <i class="fas fa-project-diagram"></i>
-                    </div>
-                    <div class="project-info">
-                        <h1>${escapeHtml(project.name)}</h1>
-                        <p>${escapeHtml(project.description || 'Project funding dashboard')}</p>
-                    </div>
-                </div>
-                <div class="controls">
-                    <a href="/" class="btn">
-                        <i class="fas fa-home"></i> Main Dashboard
-                    </a>
-                </div>
-            </div>
-            
-            <div class="month-nav">
-                <a href="/project-dashboard?projectId=${projectId}&month=${prevMonth(current)}" class="nav-btn">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
-                <div class="current-month">${escapeHtml(monthKey)}</div>
-                <a href="/project-dashboard?projectId=${projectId}&month=${nextMonth(current)}" class="nav-btn">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
-            </div>
-            
-            <div class="kpi-cards">
-                <div class="kpi-card total">
-                    <div class="kpi-icon">
-                        <i class="fas fa-donate"></i>
-                    </div>
-                    <h3>Total Funding</h3>
-                    <div class="value">₦${totalAmount.toLocaleString()}</div>
-                    <div class="sub-value">Amount Raised</div>
-                </div>
-                
-                <div class="kpi-card donations-count">
-                    <div class="kpi-icon">
-                        <i class="fas fa-hand-holding-heart"></i>
-                    </div>
-                    <h3>Donations</h3>
-                    <div class="value">${filtered.length}</div>
-                    <div class="sub-value">Received This Month</div>
-                </div>
-                
-                <div class="kpi-card donors">
-                    <div class="kpi-icon">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <h3>Supporters</h3>
-                    <div class="value">${donorCount}</div>
-                    <div class="sub-value">Individual Donors</div>
-                </div>
-                
-                <div class="kpi-card avg-gift">
-                    <div class="kpi-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <h3>Average Gift</h3>
-                    <div class="value">₦${avgDonation}</div>
-                    <div class="sub-value">Per Supporter</div>
-                </div>
-            </div>
-            
-            <div class="donations-table">
-                <div class="table-header">
-                    <h2><i class="fas fa-list"></i> Donation Details</h2>
-                </div>
-                
-                ${filtered.length === 0 ? `
-                    <div class="no-donations">
-                        <i class="fas fa-inbox"></i>
-                        <h3>No Donations This Month</h3>
-                        <p>This project hasn't received any contributions for ${escapeHtml(monthKey)} yet. Share the impact to encourage support!</p>
-                    </div>
-                ` : `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Supporter</th>
-                                <th>Amount</th>
-                                <th>Type</th>
-                                <th>Reference</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${filtered.map(d => {
-  let metadata = {};
-  try {
-    metadata = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {};
+    // ✅ Use res.render to serve EJS
+    res.render('project-dashboard', {
+      cspNonce: res.locals.cspNonce,
+      project,
+      filtered,
+      totalAmount,
+      donorCount,
+      avgDonation,
+      title: monthKey,
+      prev,
+      next,
+      projectId
+    });
+
   } catch (err) {
-    logger.error('❌ Metadata parse error for donation:', d.id);
+    next(new AppError('Failed to load project dashboard', 500));
   }
-
-  c// Consistent UTC handling
-const monthStart = new Date(Date.UTC(year, month - 1, 1));
-const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
-
-// Proper UTC formatting
-const formattedDate = new Date(rawDate).toLocaleDateString('en-US', {
-  timeZone: 'UTC',
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric'
 });
 
-// Correct month navigation
-function getPrevMonth(date) {
-  const d = new Date(date);
-  d.setUTCMonth(d.getUTCMonth() - 1);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-                                return `
-                                <tr>
-                                    <td>
-                                        <div class="donor-name">
-                                            <div class="donor-icon">
-                                                <i class="fas fa-user"></i>
-                                            </div>
-                                            <div>${escapeHtml(metadata.donorName || 'Anonymous Supporter')}</div>
-                                        </div>
-                                    </td>
-                                    <td class="amount">₦${(d.amount / 100).toLocaleString()}</td>
-                                    <td>${escapeHtml(metadata.donationType || 'one-time')}</td>
-                                    <td class="reference">${escapeHtml(d.reference)}</td>
-                                    <td>${displayDate}</td>
-                                </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                `}
-            </div>
-            
-            <div class="footer">
-                <p>Harvest Call Ministries • Generated on ${escapeHtml(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }))}</p>
-            </div>
-        </div>
-        
-        <script>
-            // Add loading indicator during navigation
-            document.querySelectorAll('.nav-btn').forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                    // Show loading indicator
-                    document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><div style="animation: spin 1s linear infinite; width: 60px; height: 60px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center;"><i class="fas fa-spinner" style="font-size: 30px; color: #003366;"></i></div><style>@keyframes spin {100% {transform: rotate(360deg);}}</style></div>';
-                });
-            });
-        </script>
-    </body>
-    </html>
-    `;
-
-    res.send(html);
-  } catch (err) {
-  next(new AppError('Failed to load project dashboard', 500));
-}
-});
 
 // Get projects accessible to current staff
 app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => {

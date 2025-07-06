@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title><%= staff.name %> – Staff Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style nonce="<%= cspNonce %>">
+    :root {
+      --primary: #003366;
+      --secondary: #2E7D32;
+      --accent: #E67E22;
+      --light: #f8f9fa;
+      --muted: #6c757d;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--light);
+      color: var(--primary);
+    }
+
+    .dashboard-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+
+    .staff-header {
+      display: flex;
+      align-items: center;
+    }
+
+    .staff-avatar {
+      background: var(--secondary);
+      color: white;
+      font-weight: bold;
+      font-size: 1.5rem;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 1rem;
+    }
+
+    .staff-info h1 {
+      margin: 0;
+    }
+
+    .btn {
+      background: var(--accent);
+      color: white;
+      padding: 0.5rem 1rem;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: bold;
+      transition: background 0.3s ease;
+    }
+
+    .btn:hover {
+      background: #cf711f;
+    }
+
+    .project-selector {
+      margin-bottom: 2rem;
+    }
+
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+
+    .nav-btn {
+      background: var(--primary);
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      margin: 0 1rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .current-month {
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    .kpi-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .kpi-card {
+      background: white;
+      border-left: 6px solid var(--secondary);
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+
+    .kpi-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--accent);
+    }
+
+    .value {
+      font-size: 1.8rem;
+      font-weight: bold;
+    }
+
+    .sub-value {
+      color: var(--muted);
+    }
+
+    .donations-table {
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: var(--primary);
+      color: white;
+    }
+
+    th, td {
+      padding: 0.75rem;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .donor-name {
+      display: flex;
+      align-items: center;
+    }
+
+    .donor-icon {
+      margin-right: 0.5rem;
+      color: var(--muted);
+    }
+
+    .type.one-time {
+      color: #007bff;
+    }
+
+    .type.recurring {
+      color: #28a745;
+    }
+
+    .no-donations {
+      text-align: center;
+      color: var(--muted);
+      padding: 2rem;
+    }
+
+    .footer {
+      margin-top: 3rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <div class="header">
+      <div class="staff-header">
+        <div class="staff-avatar"><%= staff.name.charAt(0) %></div>
+        <div class="staff-info">
+          <h1><%= staff.name %></h1>
+          <p>Staff Support Dashboard</p>
+        </div>
+      </div>
+      <div class="controls">
+        <a href="/" class="btn"><i class="fas fa-home"></i> Main Dashboard</a>
+      </div>
+    </div>
+
+    <div class="project-selector">
+      <h3><i class="fas fa-project-diagram"></i> View Project Dashboard</h3>
+      <select id="project-select">
+        <option value="">Loading projects...</option>
+      </select>
+    </div>
+
+    <div class="month-nav">
+      <a href="/staff-dashboard?month=<%= prev %>" class="nav-btn"><i class="fas fa-chevron-left"></i></a>
+      <div class="current-month"><%= title %></div>
+      <a href="/staff-dashboard?month=<%= next %>" class="nav-btn"><i class="fas fa-chevron-right"></i></a>
+    </div>
+
+    <div class="kpi-cards">
+      <div class="kpi-card total">
+        <div class="kpi-icon"><i class="fas fa-donate"></i></div>
+        <h3>Total Support</h3>
+        <div class="value">₦<%= totalAmount.toLocaleString() %></div>
+        <div class="sub-value">Amount Raised</div>
+      </div>
+      <div class="kpi-card donations-count">
+        <div class="kpi-icon"><i class="fas fa-hand-holding-heart"></i></div>
+        <h3>Donations</h3>
+        <div class="value"><%= donations.length %></div>
+        <div class="sub-value">Received This Month</div>
+      </div>
+      <div class="kpi-card donors">
+        <div class="kpi-icon"><i class="fas fa-users"></i></div>
+        <h3>Supporters</h3>
+        <div class="value"><%= donorCount %></div>
+        <div class="sub-value">Individual Donors</div>
+      </div>
+      <div class="kpi-card avg-gift">
+        <div class="kpi-icon"><i class="fas fa-chart-line"></i></div>
+        <h3>Average Gift</h3>
+        <div class="value">₦<%= avgDonation %></div>
+        <div class="sub-value">Per Supporter</div>
+      </div>
+    </div>
+
+    <div class="donations-table">
+      <div class="table-header">
+        <h2><i class="fas fa-list"></i> Donation Details</h2>
+      </div>
+
+      <% if (donations.length === 0) { %>
+        <div class="no-donations">
+          <i class="fas fa-inbox"></i>
+          <h3>No Donations This Month</h3>
+          <p>Your supporters haven't made any contributions for <%= title %> yet. Share your ministry story to encourage giving!</p>
+        </div>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Supporter</th>
+              <th>Amount</th>
+              <th>Type</th>
+              <th>Reference</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% donations.forEach(d => { %>
+              <% const m = typeof d.metadata === 'string' ? JSON.parse(d.metadata) : d.metadata || {}; %>
+              <tr>
+                <td>
+                  <div class="donor-name">
+                    <div class="donor-icon"><i class="fas fa-user"></i></div>
+                    <div><%= m.donorName || 'Anonymous Supporter' %></div>
+                  </div>
+                </td>
+                <td class="amount">₦<%= (d.amount / 100).toLocaleString() %></td>
+                <td class="type <%= m.donationType === 'recurring' ? 'recurring' : 'one-time' %>">
+                  <%= m.donationType || 'one-time' %>
+                </td>
+                <td class="reference"><%= d.reference %></td>
+                <td><%= new Date(d.created_at).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' }) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="footer">
+      <p>Harvest Call Ministries • Generated on <%= new Date().toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' }) %></p>
+    </div>
+  </div>
+
+  <script nonce="<%= cspNonce %>">
+    function viewProjectDashboard(projectId) {
+      if (projectId) {
+        window.location.href = '/project-dashboard?projectId=' + projectId;
+      }
+    }
+
+    async function loadProjects() {
+      try {
+        const response = await fetch('/api/accessible-projects');
+        if (!response.ok) throw new Error('Failed to load projects');
+
+        const projects = await response.json();
+        const select = document.getElementById('project-select');
+        select.innerHTML = '<option value="">-- Select Project --</option>';
+        projects.forEach(p => {
+          const option = document.createElement('option');
+          option.value = p.id;
+          option.textContent = p.name;
+          select.appendChild(option);
+        });
+
+        select.addEventListener('change', () => {
+          viewProjectDashboard(select.value);
+        });
+      } catch (err) {
+        const select = document.getElementById('project-select');
+        select.innerHTML = '<option value=\"\">Failed to load projects</option>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadProjects);
+
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.body.innerHTML = '<div style=\"display:flex;justify-content:center;align-items:center;height:100vh;\"><div style=\"animation: spin 1s linear infinite; width: 60px; height: 60px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center;\"><i class=\"fas fa-spinner\" style=\"font-size: 30px; color: #003366;\"></i></div></div>';
+        document.head.innerHTML += '<style>@keyframes spin {100% {transform: rotate(360deg);}}</style>';
+      });
+    });
+  </script>
+</body>
+</html>

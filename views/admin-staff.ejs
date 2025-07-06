@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manage Staff – Harvest Call Admin</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style nonce="<%= cspNonce %>">
+    body {
+      font-family: Arial, sans-serif;
+      padding: 40px;
+      background: #f8f9fa;
+      color: #333;
+    }
+    h1 {
+      color: #003366;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 12px;
+      border: 1px solid #ccc;
+    }
+    th {
+      background: #003366;
+      color: white;
+      text-align: left;
+    }
+    tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+    .btn {
+      display: inline-block;
+      padding: 6px 12px;
+      background-color: #2E7D32;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .inactive {
+      background-color: #888;
+    }
+    .top-link {
+      margin-bottom: 20px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h1><i class="fas fa-users"></i> Staff Management</h1>
+  <a class="top-link btn" href="/admin/add-staff-account">+ Add New Staff</a>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% staffList.forEach(s => { %>
+        <tr>
+          <td><%= s.name %></td>
+          <td><%= s.email %></td>
+          <td><%= s.active ? 'Active' : 'Inactive' %></td>
+          <td>
+            <form method="POST" action="/admin/toggle-staff/<%= s.id %>" style="display:inline;">
+              <button class="btn <%= s.active ? 'inactive' : '' %>" type="submit">
+                <%= s.active ? 'Mark Inactive' : 'Reactivate' %>
+              </button>
+            </form>
+          </td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+</body>
+</html>
