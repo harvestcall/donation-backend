@@ -2090,34 +2090,11 @@ if (!isMatch) {
 
 // Password reset request endpoint
 app.get('/forgot-password', (req, res) => {
-  const token = res.locals.csrfToken;
-  res.send(`
-    <html>
-    <head>
-      <title>Reset Password</title>
-      <style>
-        body { font-family: Arial; padding: 40px; background: #f5f5f5; }
-        form { background: white; padding: 30px; max-width: 400px; margin: 0 auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h2 { color: #003366; text-align: center; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
-        button { background: #003366; color: white; padding: 12px; width: 100%; border: none; border-radius: 4px; cursor: pointer; }
-        .footer { text-align: center; margin-top: 20px; }
-      </style>
-    </head>
-    <body>
-      <form method="POST" action="/request-password-reset">
-        <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
-        <h2>Reset Your Password</h2>
-        <input type="email" name="email" placeholder="Enter your email" required />
-        <button type="submit">Send Reset Instructions</button>
-        <div class="footer">
-          <a href="/login">Remembered your password?</a>
-        </div>
-      </form>
-    </body>
-    </html>
-  `);
+  const csrfToken = res.locals.csrfToken;
+  const cspNonce = res.locals.cspNonce;
+  res.render('forgot-password', { csrfToken, cspNonce });
 });
+
 
 // ✅ Password Reset Form - Added for token-based password reset
 app.get('/reset-password', (req, res) => {
