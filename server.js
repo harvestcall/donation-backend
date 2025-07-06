@@ -1,7 +1,8 @@
 // ✅ Load environment variables
 require('dotenv').config();
 
-console.log('🔎 ENV: DATABASE_URL =', process.env.DATABASE_URL);
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
 
 
 // ✅ Core dependencies and modules
@@ -41,41 +42,34 @@ app.use(cors({
   credentials: true
 }));
 
-// Nonce generation middleware
 app.use((req, res, next) => {
   res.locals.cspNonce = crypto.randomBytes(16).toString('hex');
-  next();
+
+  // ✅ Helmet is now applied *after* nonce is set, and per request
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: [
+          "'self'",
+          `'nonce-${res.locals.cspNonce}'`,
+          "https://cdnjs.cloudflare.com",
+          "https://fonts.googleapis.com"
+        ],
+        scriptSrc: [
+          "'self'",
+          `'nonce-${res.locals.cspNonce}'`,
+          "https://cdnjs.cloudflare.com"
+        ],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", process.env.PAYSTACK_API_URL || "https://api.paystack.co"]
+      }
+    },
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: 'same-origin' }
+  })(req, res, next); // <-- Important: apply helmet immediately
 });
-
-// ✅ Helmet Activation - Added for enhanced security headers
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: [
-        "'self'",
-        (req, res) => `'nonce-${res.locals.cspNonce}'`,
-        "https://cdnjs.cloudflare.com"
-      ],
-      styleSrc: [
-        "'self'",
-        (req, res) => `'nonce-${res.locals.cspNonce}'`,
-        "https://cdnjs.cloudflare.com",
-        "https://fonts.googleapis.com"  // if you use web fonts later
-      ],
-      fontSrc: [
-        "'self'",
-        "https://cdnjs.cloudflare.com",
-        "https://fonts.gstatic.com"
-      ],
-      imgSrc: ["'self'", "data:", "https://yourdomain.com"],
-      connectSrc: ["'self'", process.env.PAYSTACK_API_URL || "https://api.paystack.co"]
-    }
-  },
-  crossOriginEmbedderPolicy: false, // disable to avoid errors with CDNs
-  referrerPolicy: { policy: 'same-origin' }
-}));
-
 
 
 const BCRYPT_COST = Math.min(
@@ -2025,42 +2019,13 @@ const assignments = selectedProjects.map(pid => ({
 
 
 // Login Form
-app.get('/login', (req, res, next) => {
-  try {
-    const token = res.locals.csrfToken;
-    const html = `
-      <html>
-      <head>
-        <title>Staff Login</title>
-        <style>
-          body { font-family: Arial; background: #f0f0f0; padding: 40px; }
-          form { background: #fff; padding: 20px; max-width: 400px; margin: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-          input { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; }
-          button { background: #003366; color: white; padding: 10px; width: 100%; border: none; border-radius: 4px; }
-          h2 { text-align: center; margin-bottom: 20px; color: #003366; }
-        </style>
-      </head>
-      <body>
-        <form method="POST" action="/login">
-          <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
-          <h2>Staff Login</h2>
-          <input type="email" name="email" placeholder="Email" required />
-          <input type="password" name="password" placeholder="Password" required />
-          <button type="submit">Login</button>
-          
-          <!-- ADDED FORGOT PASSWORD LINK HERE -->
-          <p style="text-align: center; margin-top: 15px;">
-            <a href="/forgot-password">Forgot your password?</a>
-          </p>
-        </form>
-      </body>
-      </html>
-    `;
-    res.send(html);
-  } catch (err) {
-    next(err);
-  }
+app.get('/login', (req, res) => {
+  res.render('login', {
+    csrfToken: res.locals.csrfToken,
+    cspNonce: res.locals.cspNonce
+  });
 });
+
 
 
 // Login Handler
