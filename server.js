@@ -1593,6 +1593,15 @@ app.get('/reset-password', (req, res) => {
   `);
 });
 
+// 🔐 Staff Authentication Middleware
+const requireStaffAuth = (req, res, next) => {
+  if (req.session && req.session.staffId) {
+    return next();
+  }
+  res.redirect('/login');
+};
+
+
 // Password reset handler
 app.get('/staff-dashboard', requireStaffAuth, async (req, res, next) => {
   try {
