@@ -25,6 +25,7 @@ const { notifyAdmin } = require('./utils/alerts');
 const { doubleCsrf } = require('csrf-csrf');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 
 
 const app = express();
@@ -142,6 +143,10 @@ app.use(session({
   maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
 }
 }));
+
+// Add this BEFORE app.use(doubleCsrfProtection);
+app.use(cookieParser());
+
 
 
 const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
