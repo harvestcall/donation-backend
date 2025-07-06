@@ -977,265 +977,263 @@
         </div>
     </div>
 
-    <script>
-        let currentAllocationType = 'staff';
-        let selectedAllocation = null;
-        let staffMembers = [];
-        let projects = [];
+    <script <%= typeof cspNonce !== 'undefined' ? ` nonce="${cspNonce}"` : '' %>>
+    let currentAllocationType = 'staff';
+    let selectedAllocation = null;
+    let staffMembers = [];
+    let projects = [];
 
-        const mockStaff = [
-            { id: 1, name: "Chinwe Okonkwo" },
-            { id: 2, name: "Emeka Adebayo" },
-            { id: 3, name: "Amina Mohammed" },
-            { id: 4, name: "Tunde Okafor" }
-        ];
+    const mockStaff = [
+        { id: 1, name: "Chinwe Okonkwo" },
+        { id: 2, name: "Emeka Adebayo" },
+        { id: 3, name: "Amina Mohammed" },
+        { id: 4, name: "Tunde Okafor" }
+    ];
+    
+    const mockProjects = [
+        { id: 101, name: "Clean Water Initiative" },
+        { id: 102, name: "Youth Tech Program" },
+        { id: 103, name: "Reforestation Project" },
+        { id: 104, name: "Mobile Health Clinic" }
+    ];
+
+    const allocationBtns = document.querySelectorAll('.allocation-btn');
+    const allocationList = document.getElementById('allocation-list');
+    const allocationSearch = document.getElementById('allocation-search');
+    const allocationDropdown = document.getElementById('allocation-dropdown');
+
+    async function fetchAllocationData() {
+        try {
+            const [staffRes, projectsRes] = await Promise.all([
+                fetch('https://donate.harvestcallafrica.org/staff'),
+                fetch('https://donate.harvestcallafrica.org/projects')
+            ]);
+
+            if (!staffRes.ok) throw new Error(`Staff fetch failed: ${staffRes.status}`);
+            if (!projectsRes.ok) throw new Error(`Projects fetch failed: ${projectsRes.status}`);
+            
+            staffMembers = await staffRes.json();
+            projects = await projectsRes.json();
+        } catch (err) {
+            staffMembers = mockStaff;
+            projects = mockProjects;
+        } finally {
+            populateAllocationList(currentAllocationType);
+        }
+    }
+
+    function populateAllocationList(type, searchTerm = '') {
+        if (!allocationList) return;
         
-        const mockProjects = [
-            { id: 101, name: "Clean Water Initiative" },
-            { id: 102, name: "Youth Tech Program" },
-            { id: 103, name: "Reforestation Project" },
-            { id: 104, name: "Mobile Health Clinic" }
-        ];
-
-        const allocationBtns = document.querySelectorAll('.allocation-btn');
-        const allocationList = document.getElementById('allocation-list');
-        const allocationSearch = document.getElementById('allocation-search');
-        const allocationDropdown = document.getElementById('allocation-dropdown');
-
-        async function fetchAllocationData() {
-            try {
-                const [staffRes, projectsRes] = await Promise.all([
-                    fetch('https://donate.harvestcallafrica.org/staff'),
-                    fetch('https://donate.harvestcallafrica.org/projects')
-                ]);
-
-                if (!staffRes.ok) throw new Error(`Staff fetch failed: ${staffRes.status}`);
-                if (!projectsRes.ok) throw new Error(`Projects fetch failed: ${projectsRes.status}`);
+        allocationList.innerHTML = '';
+        const items = type === 'staff' ? staffMembers : projects;
+        
+        const filteredItems = items.filter(item => 
+            item.name.toLowerCase().includes((searchTerm || '').toLowerCase())
+        );
+        
+        if (filteredItems.length > 0) {
+            filteredItems.forEach(item => {
+                const option = document.createElement('div');
+                option.className = 'dropdown-option';
                 
-                staffMembers = await staffRes.json();
-                projects = await projectsRes.json();
-            } catch (err) {
-                staffMembers = mockStaff;
-                projects = mockProjects;
-            } finally {
-                populateAllocationList(currentAllocationType);
-            }
-        }
-
-        function populateAllocationList(type, searchTerm = '') {
-            if (!allocationList) return;
-            
-            allocationList.innerHTML = '';
-            const items = type === 'staff' ? staffMembers : projects;
-            
-            const filteredItems = items.filter(item => 
-                item.name.toLowerCase().includes((searchTerm || '').toLowerCase())
-            );
-            
-            if (filteredItems.length > 0) {
-                filteredItems.forEach(item => {
-                    const option = document.createElement('div');
-                    option.className = 'dropdown-option';
-                    
-                    if (selectedAllocation && 
-                        selectedAllocation.id === item.id && 
-                        selectedAllocation.type === type) {
-                        option.classList.add('selected');
-                    }
-                    
-                    option.dataset.id = item.id;
-                    option.dataset.type = type;
-                    option.innerHTML = `<strong>${item.name}</strong>`;
-                    
-                    option.addEventListener('click', () => {
-                        document.querySelectorAll('.dropdown-option').forEach(o => 
-                            o.classList.remove('selected')
-                        );
-                        option.classList.add('selected');
-                        selectedAllocation = {
-                            type: type,
-                            id: item.id,
-                            name: item.name
-                        };
-                        allocationSearch.placeholder = item.name;
-                        allocationList.classList.remove('visible');
-                    });
-                    
-                    allocationList.appendChild(option);
-                });
-            } else {
-                const noResults = document.createElement('div');
-                noResults.className = 'no-results';
-                noResults.textContent = 'No matching items found';
-                allocationList.appendChild(noResults);
-            }
-        }
-
-        function initAllocation() {
-            if (!allocationBtns.length) return;
-            
-            allocationBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    allocationBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    currentAllocationType = btn.dataset.type;
-                    allocationSearch.placeholder = currentAllocationType === 'staff' 
-                        ? 'Search staff...' 
-                        : 'Search projects...';
-                    allocationSearch.value = '';
-                    populateAllocationList(currentAllocationType);
-                    allocationList.classList.add('visible');
-                });
-            });
-            
-            allocationSearch.addEventListener('input', () => {
-                populateAllocationList(currentAllocationType, allocationSearch.value);
-            });
-            
-            allocationSearch.addEventListener('focus', () => {
-                allocationList.classList.add('visible');
-                populateAllocationList(currentAllocationType, allocationSearch.value);
-            });
-            
-            document.addEventListener('click', e => {
-                if (!allocationDropdown.contains(e.target)) {
+                if (selectedAllocation && 
+                    selectedAllocation.id === item.id && 
+                    selectedAllocation.type === type) {
+                    option.classList.add('selected');
+                }
+                
+                option.dataset.id = item.id;
+                option.dataset.type = type;
+                option.innerHTML = `<strong>${item.name}</strong>`;
+                
+                option.addEventListener('click', () => {
+                    document.querySelectorAll('.dropdown-option').forEach(o => 
+                        o.classList.remove('selected')
+                    );
+                    option.classList.add('selected');
+                    selectedAllocation = {
+                        type: type,
+                        id: item.id,
+                        name: item.name
+                    };
+                    allocationSearch.placeholder = item.name;
                     allocationList.classList.remove('visible');
-                }
-            });
-        }
-
-        function initCurrency() {
-            const currencyBtns = document.querySelectorAll('.currency-btn');
-            const currencySymbol = document.getElementById('currency-symbol');
-            const ngnAmounts = document.querySelectorAll('.amount-btn:not(.usd-amount)');
-            const usdAmounts = document.querySelectorAll('.usd-amount');
-            
-            currencyBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    currencyBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    const currency = btn.dataset.currency;
-                    
-                    if (currency === 'NGN') {
-                        ngnAmounts.forEach(el => el.style.display = 'flex');
-                        usdAmounts.forEach(el => el.style.display = 'none');
-                        currencySymbol.textContent = '₦';
-                    } else {
-                        ngnAmounts.forEach(el => el.style.display = 'none');
-                        usdAmounts.forEach(el => el.style.display = 'flex');
-                        currencySymbol.textContent = '$';
-                    }
                 });
+                
+                allocationList.appendChild(option);
             });
+        } else {
+            const noResults = document.createElement('div');
+            noResults.className = 'no-results';
+            noResults.textContent = 'No matching items found';
+            allocationList.appendChild(noResults);
         }
+    }
 
-        function initDonationType() {
-            const typeBtns = document.querySelectorAll('.type-btn');
-            
-            typeBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    typeBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                });
+    function initAllocation() {
+        if (!allocationBtns.length) return;
+        
+        allocationBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                allocationBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentAllocationType = btn.dataset.type;
+                allocationSearch.placeholder = currentAllocationType === 'staff' 
+                    ? 'Search staff...' 
+                    : 'Search projects...';
+                allocationSearch.value = '';
+                populateAllocationList(currentAllocationType);
+                allocationList.classList.add('visible');
             });
-        }
-
-        function initAmountSelection() {
-            const amountBtns = document.querySelectorAll('.amount-btn');
-            const customAmountInput = document.getElementById('custom-amount-input');
-            
-            amountBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    amountBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    customAmountInput.value = '';
-                });
-            });
-            
-            customAmountInput.addEventListener('focus', () => {
-                amountBtns.forEach(b => b.classList.remove('active'));
-            });
-        }
-
-        function initDonateButton() {
-            const donateButton = document.getElementById('donate-button');
-            
-            donateButton.addEventListener('click', async () => {
-                const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
-                const type = document.querySelector('.type-btn.active')?.dataset.type;
-                const selectedAmountBtn = document.querySelector('.amount-btn.active');
-                const customAmount = document.getElementById('custom-amount-input')?.value;
-                
-                let amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
-                
-                if (!amount || amount <= 0) {
-                    alert('Please select or enter a donation amount');
-                    return;
-                }
-                
-                const name = document.getElementById('full-name')?.value;
-                const email = document.getElementById('email')?.value;
-                const phone = document.getElementById('phone')?.value;
-                
-                if (!name || !email || !phone) {
-                    alert('Please complete all required information fields');
-                    return;
-                }
-                
-                let staffId = null;
-                let projectId = null;
-                
-                if (selectedAllocation) {
-                    if (selectedAllocation.type === 'staff') {
-                        staffId = selectedAllocation.id;
-                    } else if (selectedAllocation.type === 'projects') {
-                        projectId = selectedAllocation.id;
-                    }
-                }
-                
-                const payload = {
-                    email: email,
-                    amount: parseInt(amount),
-                    currency: currency,
-                    metadata: {
-                        donorName: name,
-                        donationType: type,
-                        staffId: staffId,
-                        projectId: projectId,
-                        phone: phone
-                    }
-                };
-                
-                try {
-                    const response = await fetch('http://localhost:5000/initialize-payment', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.authorization_url) {
-                        window.location.href = data.authorization_url;
-                    } else {
-                        alert('Payment initialization failed. Please try again.');
-                    }
-                } catch (error) {
-                    alert('An error occurred while processing your payment. Please try again.');
-                }
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initCurrency();
-            initDonationType();
-            initAmountSelection();
-            initAllocation();
-            initDonateButton();
-            fetchAllocationData();
         });
-    </script>
-</body>
-</html>
+        
+        allocationSearch.addEventListener('input', () => {
+            populateAllocationList(currentAllocationType, allocationSearch.value);
+        });
+        
+        allocationSearch.addEventListener('focus', () => {
+            allocationList.classList.add('visible');
+            populateAllocationList(currentAllocationType, allocationSearch.value);
+        });
+        
+        document.addEventListener('click', e => {
+            if (!allocationDropdown.contains(e.target)) {
+                allocationList.classList.remove('visible');
+            }
+        });
+    }
+
+    function initCurrency() {
+        const currencyBtns = document.querySelectorAll('.currency-btn');
+        const currencySymbol = document.getElementById('currency-symbol');
+        const ngnAmounts = document.querySelectorAll('.amount-btn:not(.usd-amount)');
+        const usdAmounts = document.querySelectorAll('.usd-amount');
+        
+        currencyBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                currencyBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const currency = btn.dataset.currency;
+                
+                if (currency === 'NGN') {
+                    ngnAmounts.forEach(el => el.style.display = 'flex');
+                    usdAmounts.forEach(el => el.style.display = 'none');
+                    currencySymbol.textContent = '₦';
+                } else {
+                    ngnAmounts.forEach(el => el.style.display = 'none');
+                    usdAmounts.forEach(el => el.style.display = 'flex');
+                    currencySymbol.textContent = '$';
+                }
+            });
+        });
+    }
+
+    function initDonationType() {
+        const typeBtns = document.querySelectorAll('.type-btn');
+        
+        typeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                typeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    }
+
+    function initAmountSelection() {
+        const amountBtns = document.querySelectorAll('.amount-btn');
+        const customAmountInput = document.getElementById('custom-amount-input');
+        
+        amountBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                amountBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                customAmountInput.value = '';
+            });
+        });
+        
+        customAmountInput.addEventListener('focus', () => {
+            amountBtns.forEach(b => b.classList.remove('active'));
+        });
+    }
+
+    function initDonateButton() {
+        const donateButton = document.getElementById('donate-button');
+        
+        donateButton.addEventListener('click', async () => {
+            const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
+            const type = document.querySelector('.type-btn.active')?.dataset.type;
+            const selectedAmountBtn = document.querySelector('.amount-btn.active');
+            const customAmount = document.getElementById('custom-amount-input')?.value;
+            
+            let amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
+            
+            if (!amount || amount <= 0) {
+                alert('Please select or enter a donation amount');
+                return;
+            }
+            
+            const name = document.getElementById('full-name')?.value;
+            const email = document.getElementById('email')?.value;
+            const phone = document.getElementById('phone')?.value;
+            
+            if (!name || !email || !phone) {
+                alert('Please complete all required information fields');
+                return;
+            }
+            
+            let staffId = null;
+            let projectId = null;
+            
+            if (selectedAllocation) {
+                if (selectedAllocation.type === 'staff') {
+                    staffId = selectedAllocation.id;
+                } else if (selectedAllocation.type === 'projects') {
+                    projectId = selectedAllocation.id;
+                }
+            }
+            
+            const payload = {
+                email: email,
+                amount: parseInt(amount),
+                currency: currency,
+                metadata: {
+                    donorName: name,
+                    donationType: type,
+                    staffId: staffId,
+                    projectId: projectId,
+                    phone: phone
+                }
+            };
+            
+            try {
+                const response = await fetch('http://localhost:5000/initialize-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (data.authorization_url) {
+                    window.location.href = data.authorization_url;
+                } else {
+                    alert('Payment initialization failed. Please try again.');
+                }
+            } catch (error) {
+                alert('An error occurred while processing your payment. Please try again.');
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initCurrency();
+        initDonationType();
+        initAmountSelection();
+        initAllocation();
+        initDonateButton();
+        fetchAllocationData();
+    });
+</script>
