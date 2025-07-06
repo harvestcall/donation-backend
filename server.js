@@ -310,12 +310,11 @@ async function initializeDatabase() {
 }
 
   app.get('/', (req, res) => {
-  res.sendFile(path.resolve(__dirname, 'donation-form.html'), {
-  headers: {
-    'Content-Type': 'text/html'
-  }
+  res.render('donation-form', {
+    cspNonce: res.locals.cspNonce
+  });
 });
-});
+
 
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
     try {
@@ -2100,7 +2099,7 @@ app.get('/forgot-password', (req, res) => {
 app.get('/reset-password', (req, res) => {
   const token = req.query.token;
   const csrfToken = res.locals.csrfToken;
-  
+
   if (!token) {
     return res.status(400).send(`
       <div style="text-align:center; padding:40px;">
@@ -2111,36 +2110,8 @@ app.get('/reset-password', (req, res) => {
     `);
   }
 
-  res.send(`
-    <html>
-    <head>
-      <title>Reset Password</title>
-      <style>
-        body { font-family: Arial; padding: 40px; background: #f5f5f5; }
-        form { background: white; padding: 30px; max-width: 400px; margin: 0 auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h2 { color: #003366; text-align: center; margin-bottom: 20px; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
-        button { background: #2E7D32; color: white; padding: 12px; width: 100%; border: none; border-radius: 4px; cursor: pointer; }
-        .info { background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 15px; text-align: center; }
-      </style>
-    </head>
-    <body>
-      <form method="POST" action="/reset-password">
-        <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
-        <input type="hidden" name="token" value="${escapeHtml(token)}" />
-        <h2>Reset Your Password</h2>
-        <div class="info">
-          <i class="fas fa-lock"></i> Create a new password
-        </div>
-        <input type="password" name="new_password" placeholder="New Password" required minlength="6" />
-        <input type="password" name="confirm_password" placeholder="Confirm New Password" required minlength="6" />
-        <button type="submit">Reset Password</button>
-      </form>
-    </body>
-    </html>
-  `);
+  res.render('reset-password', { csrfToken, token });
 });
-
 
 
 
