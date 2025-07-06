@@ -1,9 +1,6 @@
 // ✅ Load environment variables
 require('dotenv').config();
 
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-
 
 // ✅ Core dependencies and modules
 const express = require('express');
@@ -33,6 +30,9 @@ const path = require('path');
 const app = express();
 app.set('trust proxy', true);  // Trust Render.com proxies
 logger.info('NODE_ENV:', process.env.NODE_ENV);
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
 
 // ✅ CORS Configuration - Added per security recommendation
 app.use(cors({ 
