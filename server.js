@@ -149,7 +149,7 @@ const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
   cookieName: "__Host-hc-csrf-token",
   cookieOptions: {
     sameSite: "lax",
-    secure: true, // 🔐 Force HTTPS-only
+    secure: process.env.FORCE_SSL === "true", // 🔐 Force HTTPS-only
     httpOnly: true,
   },
 });
