@@ -163,7 +163,13 @@ const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
 // Apply CSRF protection middleware globally (GET + POST)
 app.use(doubleCsrfProtection);
 
-// Optional: catch CSRF errors nicely
+// ✅ Provide CSRF token to EJS templates
+app.use((req, res, next) => {
+  res.locals.csrfToken = req.csrfToken?.();
+  next();
+});
+
+// Optional: catch CSRF errors
 app.use((err, req, res, next) => {
   if (err === invalidCsrfTokenError) {
     console.warn("⚠️ Invalid CSRF token");
@@ -171,6 +177,8 @@ app.use((err, req, res, next) => {
   }
   next(err);
 });
+
+
 
 
 // ✅ Rate Limiters
