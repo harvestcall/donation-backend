@@ -139,7 +139,7 @@
         .type-btn {
             flex: 1;
             padding: 14px;
-            border: noe;
+            border: none;
             background: transparent;
             font-weight: 600;
             font-size: 1.1rem;
@@ -672,7 +672,8 @@
                 </div>
             </div>
             
-            <div class="donor-info">
+            <form id="donation-form">
+<div class="donor-info">
                 <h3 class="donor-section-title">Your Information</h3>
                 
                 <div class="form-grid">
@@ -948,6 +949,7 @@
                 <p class="security-note">
                     <i class="fas fa-lock"></i> Secure 256-bit SSL encryption · All information is protected
                 </p>
+</form>
             </div>
         </div>
         
@@ -977,7 +979,7 @@
         </div>
     </div>
 
-    <script <%= typeof cspNonce !== 'undefined' ? ` nonce="${cspNonce}"` : '' %>>
+    <script<%= typeof cspNonce !== 'undefined' ? ' nonce="' + cspNonce + '"' : '' %> 
     let currentAllocationType = 'staff';
     let selectedAllocation = null;
     let staffMembers = [];
@@ -1057,7 +1059,7 @@
                         id: item.id,
                         name: item.name
                     };
-                    allocationSearch.placeholder = item.name;
+                    allocationSearch.value = item.name;
                     allocationList.classList.remove('visible');
                 });
                 
@@ -1160,7 +1162,8 @@
     function initDonateButton() {
         const donateButton = document.getElementById('donate-button');
         
-        donateButton.addEventListener('click', async () => {
+        document.getElementById('donation-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
             const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
             const type = document.querySelector('.type-btn.active')?.dataset.type;
             const selectedAmountBtn = document.querySelector('.amount-btn.active');
@@ -1178,6 +1181,17 @@
             const phone = document.getElementById('phone')?.value;
             
             if (!name || !email || !phone) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const phoneRegex = /^\+?\d{7,15}$/;
+            if (!emailRegex.test(email)) {
+                alert('Please enter a valid email address');
+                return;
+            }
+            if (!phoneRegex.test(phone)) {
+                alert('Please enter a valid phone number');
+                return;
+            }
+
                 alert('Please complete all required information fields');
                 return;
             }
@@ -1207,7 +1221,7 @@
             };
             
             try {
-                const response = await fetch('http://localhost:5000/initialize-payment', {
+                const response = await fetch('<%= paymentInitUrl %>', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
