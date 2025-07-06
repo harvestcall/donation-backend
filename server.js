@@ -1677,6 +1677,50 @@ app.get('/staff-dashboard', requireStaffAuth, async (req, res, next) => {
 
 
 // Project-Specific Dashboard
+// 🔐 Middleware to check staff access to project
+const checkProjectAccess = async (req, res, next) => {
+  try {
+    const staffId = req.session?.staffId;
+    const projectId = req.query.projectId;
+
+    // Validate session
+    if (!staffId) {
+      return res.status(401).send('Authentication required');
+    }
+
+    // Validate projectId
+    if (!projectId) {
+      return res.status(400).send('Project ID is required');
+    }
+
+    // Ensure numeric
+    const numericProjectId = parseInt(projectId);
+    if (isNaN(numericProjectId)) {
+      return res.status(400).send('Invalid Project ID');
+    }
+
+    // Check database for access
+    const assignment = await db('staff_projects')
+      .where({
+        staff_id: staffId,
+        project_id: numericProjectId
+      })
+      .first();
+
+    if (!assignment) {
+      logger.warn(`🚫 Unauthorized project access: Staff ${staffId} to Project ${projectId}`);
+      return res.status(403).send('You do not have permission to view this project');
+    }
+
+    // Attach project ID to request
+    req.projectId = numericProjectId;
+    next();
+  } catch (err) {
+    next(new AppError('Server error during project authorization', 500));
+  }
+};
+
+// ✅ Route: /project-dashboard
 app.get('/project-dashboard', requireStaffAuth, checkProjectAccess, async (req, res, next) => {
   try {
     const projectId = req.projectId;
@@ -1686,7 +1730,7 @@ app.get('/project-dashboard', requireStaffAuth, checkProjectAccess, async (req, 
       return res.status(400).send('Missing projectId');
     }
 
-    const project = await db('projects').where('id', parseInt(projectId)).first();
+    const project = await db('projects').where('id', projectId).first();
     if (!project) return res.status(404).send('Project not found');
 
     const current = monthParam
@@ -1729,11 +1773,11 @@ app.get('/project-dashboard', requireStaffAuth, checkProjectAccess, async (req, 
     nextDate.setUTCMonth(nextDate.getUTCMonth() + 1);
     const next = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, '0')}`;
 
-    // ✅ Use res.render to serve EJS
+    // ✅ Render EJS dashboard
     res.render('project-dashboard', {
       cspNonce: res.locals.cspNonce,
       project,
-      filtered,
+      donations: filtered,
       totalAmount,
       donorCount,
       avgDonation,
@@ -1747,6 +1791,7 @@ app.get('/project-dashboard', requireStaffAuth, checkProjectAccess, async (req, 
     next(new AppError('Failed to load project dashboard', 500));
   }
 });
+
 
 
 // Get projects accessible to current staff
