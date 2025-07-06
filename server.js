@@ -52,29 +52,27 @@ app.use(helmet({
       scriptSrc: [
         "'self'",
         (req, res) => `'nonce-${res.locals.cspNonce}'`,
-        "cdnjs.cloudflare.com"
+        "https://cdnjs.cloudflare.com"
       ],
       styleSrc: [
         "'self'",
         (req, res) => `'nonce-${res.locals.cspNonce}'`,
-        "cdnjs.cloudflare.com"
+        "https://cdnjs.cloudflare.com",
+        "https://fonts.googleapis.com"  // if you use web fonts later
       ],
-      imgSrc: ["'self'", "data:"],
-      fontSrc: ["'self'", "cdnjs.cloudflare.com"],
+      fontSrc: [
+        "'self'",
+        "https://cdnjs.cloudflare.com",
+        "https://fonts.gstatic.com"
+      ],
+      imgSrc: ["'self'", "data:", "https://yourdomain.com"],
       connectSrc: ["'self'", process.env.PAYSTACK_API_URL || "https://api.paystack.co"]
     }
   },
-  hsts: {
-    maxAge: 31536000, // 1 year
-    includeSubDomains: true,
-    preload: true
-  },
-  referrerPolicy: { policy: 'same-origin' },
-  frameguard: { action: 'deny' },      // Block iframe embedding
-  noSniff: true,                       // Prevent MIME type sniffing
-  ieNoOpen: true,                      // Disable IE file open
-  xssFilter: true                      // Enable XSS filter
+  crossOriginEmbedderPolicy: false, // disable to avoid errors with CDNs
+  referrerPolicy: { policy: 'same-origin' }
 }));
+
 
 
 const BCRYPT_COST = Math.min(
@@ -106,6 +104,10 @@ app.use(bodyParser.json({
     req.rawBody = buf; // Preserve raw body for webhook verification
   }
 }));
+
+// Serve static files from "public" directory
+app.use(express.static(path.join(__dirname, 'public')));
+
 
 // ✅ Database connection
 const db = require('./db');
