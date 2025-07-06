@@ -1207,10 +1207,11 @@ const assignments = selectedProjects.map(pid => ({
 // Login Form
 app.get('/login', (req, res) => {
   res.render('login', {
-    csrfToken: res.locals.csrfToken,
+    csrfToken: req.csrfToken(), // ✅ This is the correct function to call
     cspNonce: res.locals.cspNonce
   });
 });
+
 
 
 
