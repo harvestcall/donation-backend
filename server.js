@@ -28,7 +28,10 @@ const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
 
-const { doubleCsrfProtection } = doubleCsrf(options);
+const {
+  doubleCsrfProtection,
+  invalidCsrfTokenError // ✅ Add this!
+} = doubleCsrf(options);
 
 const app = express();
 app.set('trust proxy', true);  // Trust Render.com proxies
