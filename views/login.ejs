@@ -87,27 +87,42 @@
       </div>
     <% } %>
 
-    <form action="/login" method="POST">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <!-- Add form novalidate to prevent browser validation -->
+<form action="/login" method="POST" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  
+  <!-- Add autocomplete attributes -->
+  <input type="email" name="email" id="email" 
+         autocomplete="username" required>
+  
+  <input type="password" name="password" id="password" 
+         autocomplete="current-password" required>
+  
+  <button type="submit">Login</button>
+</form>
+
+<!-- Add script to ensure token is properly set -->
+<script nonce="<%= cspNonce %>">
+  document.addEventListener('DOMContentLoaded', () => {
+    // Verify token is present in form
+    const csrfInput = document.querySelector('input[name="_csrf"]');
+    if (!csrfInput || !csrfInput.value) {
+      console.error('CSRF token missing in form!');
       
-      <label for="email">Email</label>
-      <input type="email" name="email" id="email" required />
-
-      <label for="password">Password</label>
-      <input type="password" name="password" id="password" required />
-
-      <button type="submit">Login</button>
-    </form>
-
-    <div class="forgot-link">
-      <a href="/forgot-password">Forgot password?</a>
-    </div>
-  </div>
-
-  <!-- 🛡️ Debug CSRF Token Output -->
-  <script nonce="<%= cspNonce %>">
-    console.log("🛡️ CSRF Token (Form):", "<%= csrfToken %>");
-    console.log("🛡️ CSRF Token (Cookie):", document.cookie.match(/csrf-token[^;]*/));
-  </script>
-</body>
-</html>
+      // Attempt to recover from cookie
+      const cookieToken = document.cookie.match(/(?:csrf-token=)([^;]*)/);
+      if (cookieToken && cookieToken[1]) {
+        if (!csrfInput) {
+          const form = document.querySelector('form');
+          const hiddenInput = document.createElement('input');
+          hiddenInput.type = 'hidden';
+          hiddenInput.name = '_csrf';
+          hiddenInput.value = cookieToken[1];
+          form.prepend(hiddenInput);
+        } else {
+          csrfInput.value = cookieToken[1];
+        }
+      }
+    }
+  });
+</script>
