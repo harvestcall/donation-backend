@@ -130,6 +130,8 @@ const pgPool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+app.use(cookieParser());         // MUST come before CSRF
+
 // MISSING: Session middleware configuration
 app.use(session({
   store: new pgSession({ pool: pgPool, tableName: 'session' }),
@@ -164,7 +166,7 @@ const {
 });
 
 // ✅ Middleware order matters!
-app.use(cookieParser());         // MUST come before CSRF
+
 app.use(doubleCsrfProtection);   // CSRF for all POSTs
 
 // ✅ Attach CSRF token to templates
@@ -1207,6 +1209,7 @@ const ensureCsrfToken = (req, res, next) => {
 
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
+  res.locals.csrfToken = req.csrfToken?.();  // ✅ Generate token
   res.render('login', {
     csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce
@@ -1216,17 +1219,24 @@ app.get('/login', (req, res) => {
 
 // Login Handler
 app.post('/login',
-  doubleCsrfProtection,  // CSRF first!
+  doubleCsrfProtection,  // ✅ CSRF must come first!
+
+  // 🛠️ Temporary Debugging: Log tokens
   (req, res, next) => {
+    console.log("🚀 Cookie token:", req.cookies['__Host-hc-csrf-token']);
+    console.log("🚀 Form token:", req.body._csrf);
     res.set('Cache-Control', 'no-store');
     next();
   },
+
   loginLimiter,
+
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
   validateRequest,
+
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
@@ -1260,7 +1270,7 @@ app.post('/login',
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
 
-        // 🚫 Prevent form resubmission loop
+        // ✅ Prevent form resubmission loop
         return res.redirect(303, '/staff-dashboard');
       });
     } catch (err) {
