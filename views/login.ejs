@@ -73,21 +73,23 @@
 <body>
   <div class="login-container">
     <h2>Staff Login</h2>
-     <% if (typeof error !== 'undefined') { %>
-  <div class="error-message" style="
-    background: #ffebee;
-    color: #b71c1c;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    text-align: center;
-  ">
-    <%= error %>
-  </div>
-<% } %>
 
-<form action="/login" method="POST">
-  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <% if (typeof error !== 'undefined') { %>
+      <div class="error-message" style="
+        background: #ffebee;
+        color: #b71c1c;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+      ">
+        <%= error %>
+      </div>
+    <% } %>
+
+    <form action="/login" method="POST">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      
       <label for="email">Email</label>
       <input type="email" name="email" id="email" required />
 
@@ -96,10 +98,16 @@
 
       <button type="submit">Login</button>
     </form>
-   
+
     <div class="forgot-link">
       <a href="/forgot-password">Forgot password?</a>
     </div>
   </div>
+
+  <!-- 🛡️ Debug CSRF Token Output -->
+  <script nonce="<%= cspNonce %>">
+    console.log("🛡️ CSRF Token (Form):", "<%= csrfToken %>");
+    console.log("🛡️ CSRF Token (Cookie):", document.cookie.match(/csrf-token[^;]*/));
+  </script>
 </body>
 </html>

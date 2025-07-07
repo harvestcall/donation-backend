@@ -26,7 +26,9 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
+const { csrfCookieName, options } = require('./config/csrf-config');
 
+const { doubleCsrfProtection } = doubleCsrf(options);
 
 const app = express();
 app.set('trust proxy', true);  // Trust Render.com proxies
@@ -130,10 +132,9 @@ const pgPool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-app.use(cookieParser());         // MUST come before CSRF
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+const isProduction = process.env.NODE_ENV === 'production';
 
+app.use(cookieParser());         // MUST come before CSRF
 
 // MISSING: Session middleware configuration
 app.use(session({
@@ -149,28 +150,6 @@ app.use(session({
 }
 }));
 
-const isProduction = process.env.NODE_ENV === 'production';
-
-// Use different cookie names for dev/prod
-const csrfCookieName = isProduction 
-  ? "__Host-hc-csrf-token" 
-  : "hc-csrf-token";
-
-const {
-  doubleCsrfProtection,
-  invalidCsrfTokenError
-} = doubleCsrf({
-  getSecret: () => process.env.SESSION_SECRET,
-  cookieName: csrfCookieName,
-  cookieOptions: {
-    sameSite: "lax",  // Changed from strict to lax
-    path: "/",
-    secure: isProduction,
-    httpOnly: true,
-  },
-  size: 64,
-  ignoredMethods: ["GET", "HEAD", "OPTIONS"]
-});
 
 // ✅ Middleware order matters!
 
