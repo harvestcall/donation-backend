@@ -1210,7 +1210,12 @@ app.get('/login', ensureCsrfToken, (req, res) => {
 
 // Login Handler
 app.post('/login',
-  doubleCsrfProtection,  // ✅ Add this!
+  doubleCsrfProtection, // ✅ CSRF middleware
+  (req, res, next) => {
+    // ✅ Prevent caching of login POST response
+    res.set('Cache-Control', 'no-store');
+    next();
+  },
   loginLimiter,
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
@@ -1259,13 +1264,15 @@ app.post('/login',
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
 
-        return res.redirect('/staff-dashboard');
+        // ✅ Use 303 to avoid form resubmission
+        return res.redirect(303, '/staff-dashboard');
       });
     } catch (err) {
       next(new DatabaseError('Server error during login.'));
     }
   }
 );
+
 
 
 
