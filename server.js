@@ -94,7 +94,11 @@ app.use(cookieParser());
 
 // MISSING: Session middleware configuration
 app.use(session({
-  store: new pgSession({ pool: pgPool, tableName: 'session' }),
+  store: new pgSession({ 
+    pool: pgPool, 
+    tableName: 'session',
+    createTableIfMissing: true // ✅ Ensure session table exists
+  }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -108,16 +112,12 @@ app.use(session({
   }
 }));
 
+// Simplify CSRF secret initialization
 app.use((req, res, next) => {
   if (!req.session.csrfSecret) {
     req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
-    req.session.save(err => {
-      if (err) logger.error('❌ Failed to save session:', err);
-      next();
-    });
-  } else {
-    next();
   }
+  next(); // Remove manual session.save() here
 });
 
 
@@ -143,19 +143,20 @@ app.use((req, res, next) => {
   try {
     if (req.session.csrfSecret) {
       const token = generateToken(req, res);
+      
+      // Set cookie with proper attributes
       res.cookie('csrf-token', token, {
         httpOnly: false,
         sameSite: 'lax',
         secure: true,
-        path: '/'  // ✅ ensures cookie is available across routes
+        path: '/',
+        maxAge: 1000 * 60 * 15 // 15 minutes
       });
+      
       res.locals.csrfToken = token;
-    } else {
-      throw new Error('CSRF secret not found in session');
     }
   } catch (err) {
-    logger.warn('⚠️ Could not generate CSRF token:', err.message);
-    res.locals.csrfToken = '';
+    logger.warn('⚠️ CSRF token generation warning:', err.message);
   }
   next();
 });
@@ -1262,81 +1263,66 @@ app.get('/login', (req, res) => {
 // Login Handler
 app.post(
   '/login',
-  doubleCsrfProtection, // ✅ CSRF token validation (form + cookie)
-
-  // 🛡 Add debug + caching behavior
   (req, res, next) => {
-    res.set('Cache-Control', 'no-store');
-
-    // Debugging logs
-    console.log('🔐 POST /login session:', req.session);
-    console.log('🔐 POST /login cookies:', req.cookies);
-    console.log('🔐 Received token:', req.body._csrf);
-
+    // Log session info for debugging
+    logger.debug(`Session ID: ${req.sessionID}`);
+    logger.debug(`CSRF Secret: ${req.session.csrfSecret}`);
     next();
   },
-
-  loginLimiter, // ✅ Rate limiter (already configured elsewhere)
-
-  // 🔍 Input validation rules
+  doubleCsrfProtection,
+  loginLimiter,
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
-  validateRequest, // ✅ Middleware that handles validation result
+  validateRequest,
+  async (req, res, next) => {
+    try {
+      const { email, password } = req.body;
+      const normalizedEmail = email.toLowerCase();
 
-  // 🧠 Authentication logic
-  // 🧠 Authentication logic
-async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-    const normalizedEmail = email.toLowerCase();
+      // Fetch account from DB
+      const account = await db('staff_accounts')
+        .where(db.raw('LOWER(email)'), normalizedEmail)
+        .first();
 
-    // Fetch account from DB
-    const account = await db('staff_accounts')
-      .where(db.raw('LOWER(email)'), normalizedEmail)
-      .first();
-
-    if (!account) {
-      return res.status(401).json({
-        error: { name: 'Unauthorized', message: 'Invalid email or password.' }
-      });
-    }
-
-    if (account.disabled) {
-      return res.status(403).json({
-        error: { name: 'Forbidden', message: 'This account has been disabled.' }
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, account.password_hash);
-    if (!isMatch) {
-      return res.status(401).json({
-        error: { name: 'Unauthorized', message: 'Invalid email or password.' }
-      });
-    }
-
-    // ✅ Success: regenerate session and redirect
-    req.session.regenerate(err => {
-      if (err) return next(new AppError('Login failed', 500));
-
-      req.session.staffId = account.staff_id;
-      req.session.accountId = account.id;
-
-      if (!req.session.csrfSecret) {
-        req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+      if (!account) {
+        return res.status(401).json({
+          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
+        });
       }
 
-      req.session.save(err => {
-        if (err) logger.error('❌ Session save error:', err);
+      if (account.disabled) {
+        return res.status(403).json({
+          error: { name: 'Forbidden', message: 'This account has been disabled.' }
+        });
+      }
+
+      const isMatch = await bcrypt.compare(password, account.password_hash);
+      if (!isMatch) {
+        return res.status(401).json({
+          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
+        });
+      }
+
+      // ✅ Success: regenerate session and redirect
+      req.session.regenerate(err => {
+        if (err) return next(new AppError('Session regeneration failed', 500));
+        
+        req.session.staffId = account.staff_id;
+        req.session.accountId = account.id;
+        
+        // Initialize new CSRF secret
+        req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+        
+        // Redirect without manual session.save()
         res.redirect(303, '/staff-dashboard');
       });
-    });
-
-  } catch (err) {
-    next(err); // ✅ catch and pass unexpected errors
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 
 
@@ -1902,30 +1888,7 @@ app.use((err, req, res, next) => {
 
 // Then move this to the very end of your middleware chain:
 app.use((err, req, res, next) => {
-  logger.error('❌ Global error handler:', err);
-  
-  // Handle JSON responses
-  if (req.headers.accept && req.headers.accept.includes('application/json')) {
-    return res.status(err.status || 500).json({
-      error: {
-        name: err.name || 'InternalError',
-        message: err.message || 'An unexpected error occurred'
-      }
-    });
-  }
-  
-  // Handle HTML responses
-  res.status(500).render('error', {
-    cspNonce: res.locals.cspNonce,
-    message: 'An unexpected error occurred. Please try again later.'
-  });
-});
-
-
-
-// ✅ Global error handler
-app.use((err, req, res, next) => {
-  // Handle rate limiter proxy error specifically
+  // 🧠 Special proxy error
   if (err.code === 'ERR_ERL_UNEXPECTED_X_FORWARDED_FOR') {
     return res.status(500).json({
       error: {
@@ -1935,22 +1898,33 @@ app.use((err, req, res, next) => {
       }
     });
   }
-  
-  const status = err.status || 500;
-  const response = {
-    error: {
-      name: err.name || 'InternalError',
-      message: err.message || 'An unexpected error occurred'
+
+  logger.error('❌ Global error handler:', err);
+
+  // 🧠 Respond with JSON if client expects it
+  if (req.headers.accept && req.headers.accept.includes('application/json')) {
+    const status = err.status || 500;
+    const response = {
+      error: {
+        name: err.name || 'InternalError',
+        message: err.message || 'An unexpected error occurred'
+      }
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      response.error.stack = err.stack;
     }
-  };
-  
-  if (process.env.NODE_ENV === 'development') {
-    response.error.stack = err.stack;
+
+    return res.status(status).json(response);
   }
-  
-  logger.error('❌ Uncaught error:', err);
-  res.status(status).json(response);
+
+  // 🧠 Otherwise render fallback error page
+  res.status(500).render('error', {
+    cspNonce: res.locals.cspNonce,
+    message: 'An unexpected error occurred. Please try again later.'
+  });
 });
+
 
 // ✅ Index maintenance logic with locking
 let isMaintenanceRunning = false;
