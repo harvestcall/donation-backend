@@ -103,7 +103,7 @@ app.use(session({
   path: '/',                  // Required
   secure: true,               // Required
   httpOnly: true,             // Required
-  sameSite: 'strict',         // STRONGEST CSRF protection
+  sameSite: 'lax',         // STRONGEST CSRF protection
   maxAge: 30 * 24 * 60 * 60 * 1000
 }
 }));
@@ -130,7 +130,6 @@ app.use((req, res, next) => {
 // Serve static files from "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(cookieParser());         // MUST come before CSRF
 
 logger.info('NODE_ENV:', process.env.NODE_ENV);
 
