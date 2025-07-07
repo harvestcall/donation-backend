@@ -158,7 +158,12 @@ app.use(session({
 
 // ✅ Middleware order matters!
 
-app.use(doubleCsrfProtection);   // CSRF for all POSTs
+// CSRF only applies after login page renders
+app.use((req, res, next) => {
+  const safePaths = ['/login', '/forgot-password', '/reset-password'];
+  if (safePaths.includes(req.path) && req.method === 'GET') return next();
+  return doubleCsrfProtection(req, res, next);
+});
 
 // ✅ Attach CSRF token to templates
 app.use((req, res, next) => {
