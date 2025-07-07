@@ -169,17 +169,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Optional: catch CSRF errors
-app.use((err, req, res, next) => {
-  if (err === invalidCsrfTokenError) {
-    console.warn("⚠️ Invalid CSRF token");
-    return res.status(403).json({ error: "Invalid CSRF token" });
-  }
-  next(err);
-});
-
-
-
 
 // ✅ Rate Limiters
 const paymentLimiter = rateLimit({
@@ -1217,6 +1206,7 @@ app.get('/login', (req, res) => {
 
 // Login Handler
 app.post('/login',
+  doubleCsrfProtection,  // ✅ Add this!
   loginLimiter,
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
@@ -1229,42 +1219,41 @@ app.post('/login',
       const normalizedEmail = email.toLowerCase();
 
       const account = await db('staff_accounts')
-  .where(db.raw('LOWER(email)'), normalizedEmail)
-  .first();
+        .where(db.raw('LOWER(email)'), normalizedEmail)
+        .first();
 
-if (!account) {
-  return res.status(401).json({
-    error: {
-      name: 'Unauthorized',
-      message: 'Invalid email or password.'
-    }
-  });
-}
+      if (!account) {
+        return res.status(401).json({
+          error: {
+            name: 'Unauthorized',
+            message: 'Invalid email or password.'
+          }
+        });
+      }
 
-if (account.disabled) {
-  return res.status(403).json({
-    error: {
-      name: 'Forbidden',
-      message: 'This account has been disabled.'
-    }
-  });
-}
+      if (account.disabled) {
+        return res.status(403).json({
+          error: {
+            name: 'Forbidden',
+            message: 'This account has been disabled.'
+          }
+        });
+      }
 
-const isMatch = await bcrypt.compare(password, account.password_hash);
-if (!isMatch) {
-  return res.status(401).json({
-    error: {
-      name: 'Unauthorized',
-      message: 'Invalid email or password.'
-    }
-  });
-}
+      const isMatch = await bcrypt.compare(password, account.password_hash);
+      if (!isMatch) {
+        return res.status(401).json({
+          error: {
+            name: 'Unauthorized',
+            message: 'Invalid email or password.'
+          }
+        });
+      }
 
       req.session.regenerate(err => {
         if (err) return next(new AppError('Login failed. Please try again.', 500));
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
-
 
         return res.redirect('/staff-dashboard');
       });
@@ -1273,6 +1262,7 @@ if (!isMatch) {
     }
   }
 );
+
 
 
 // Password reset request endpoint
@@ -1823,6 +1813,17 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
   next(new DatabaseError('Failed to load accessible projects'));
 }
 });
+
+
+// Optional: catch CSRF errors
+app.use((err, req, res, next) => {
+  if (err === invalidCsrfTokenError) {
+    console.warn("⚠️ Invalid CSRF token");
+    return res.status(403).json({ error: "Invalid CSRF token" });
+  }
+  next(err);
+});
+
 
 // ✅ Global error handler
 app.use((err, req, res, next) => {
