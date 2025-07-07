@@ -1209,7 +1209,7 @@ const ensureCsrfToken = (req, res, next) => {
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
   res.render('login', {
-    csrfToken: res.locals.csrfToken,  // <-- Call it here!
+  csrfToken: res.locals.csrfToken(),  // <-- Call it here!
     cspNonce: res.locals.cspNonce,
     error: req.query.error
   });
