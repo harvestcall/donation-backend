@@ -112,26 +112,18 @@ const { doubleCsrfProtection, generateToken, invalidCsrfTokenError } = doubleCsr
 
 
 // ✅ Assign token as a string — not a function
+// ✅ Middleware to set res.locals.csrfToken and cookie
 app.use((req, res, next) => {
   try {
-    // Generate only once if not already stored
-    if (!req.session.csrfToken) {
-      const token = generateToken(req, res); // creates + stores internally
-      req.session.csrfToken = token;
-      res.locals.csrfToken = token;
-      res.cookie(csrfCookieName, token, options.cookieOptions);
-    } else {
-      res.locals.csrfToken = req.session.csrfToken;
-    }
-    next();
+    const token = generateToken(req, res);  // ⬅️ only once
+    res.locals.csrfToken = token;
+    res.cookie(csrfCookieName, token, options.cookieOptions);
   } catch (err) {
     console.error('❌ CSRF setup failed:', err.message);
     res.locals.csrfToken = '';
-    next();
   }
+  next();
 });
-
-
 
 
 // CSRF only applies after login page renders
@@ -1223,11 +1215,12 @@ const ensureCsrfToken = (req, res, next) => {
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
   res.render('login', {
-    csrfToken: res.locals.csrfToken,  // <-- Call it here!
+    csrfToken: res.locals.csrfToken,  // ✅ already generated
     cspNonce: res.locals.cspNonce,
     error: req.query.error
   });
 });
+
 
 // Login Handler
 app.post('/login', 
