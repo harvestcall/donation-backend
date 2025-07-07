@@ -162,12 +162,16 @@ app.use(doubleCsrfProtection);   // CSRF for all POSTs
 
 // ✅ Attach CSRF token to templates
 app.use((req, res, next) => {
-  res.locals.csrfToken = req.csrfToken?.() || '';
+  const token = req.csrfToken?.();
+  res.cookie(csrfCookieName, token, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: isProduction,
+    path: '/',
+  });
+  res.locals.csrfToken = token;
   next();
 });
-
-
-
 
 // ✅ Rate Limiters
 const paymentLimiter = rateLimit({
@@ -1200,19 +1204,19 @@ const ensureCsrfToken = (req, res, next) => {
 
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
-  // 🔍 Debugging
-  console.log('🔐 GET /login CSRF token:', req.csrfToken?.());
-  console.log('🔐 Session:', req.session);
-  console.log('🔐 Cookies:', req.cookies);
-
+  const csrfToken = req.csrfToken?.();
+  res.cookie(csrfCookieName, csrfToken, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: isProduction,
+    path: '/',
+  });
   res.render('login', {
-    csrfToken: req.csrfToken?.() || '',
+    csrfToken,
     cspNonce: res.locals.cspNonce,
     error: req.query.error
   });
 });
-
-
 
 
 // Login Handler
