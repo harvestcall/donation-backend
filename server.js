@@ -162,16 +162,15 @@ app.use(doubleCsrfProtection);   // CSRF for all POSTs
 
 // ✅ Attach CSRF token to templates
 app.use((req, res, next) => {
-  const token = req.csrfToken?.();
-  res.cookie(csrfCookieName, token, {
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: isProduction,
-    path: '/',
-  });
-  res.locals.csrfToken = token;
-  next();
+  try {
+    const token = req.csrfToken?.();
+    res.locals.csrfToken = token;
+    next();
+  } catch (err) {
+    next(); // Let CSRF middleware handle if not needed
+  }
 });
+
 
 // ✅ Rate Limiters
 const paymentLimiter = rateLimit({
@@ -1204,7 +1203,7 @@ const ensureCsrfToken = (req, res, next) => {
 
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
-  const csrfToken = req.csrfToken?.();
+  const csrfToken = req.csrfToken();
   res.cookie(csrfCookieName, csrfToken, {
     httpOnly: true,
     sameSite: 'strict',
@@ -1217,6 +1216,7 @@ app.get('/login', (req, res) => {
     error: req.query.error
   });
 });
+
 
 
 // Login Handler
@@ -1836,9 +1836,14 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
 // ✅ Custom error for bad tokens
 app.use((err, req, res, next) => {
-  if (err === invalidCsrfTokenError) {
+  if (err === invalidCsrfTokenError || err.code === 'EBADCSRFTOKEN') {
     console.warn("⚠️ Invalid CSRF token");
-    return res.redirect('/login?error=Invalid%20CSRF%20token.%20Please%20try%20again.');
+
+    return res.status(403).render('login', {
+      csrfToken: req.csrfToken?.() || '',
+      cspNonce: res.locals.cspNonce,
+      error: 'Invalid CSRF token. Please refresh and try again.'
+    });
   }
 
   if (err instanceof DatabaseError) {
