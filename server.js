@@ -1193,15 +1193,19 @@ const assignments = selectedProjects.map(pid => ({
 });
 
 
-// Login Form
-app.get('/login', (req, res) => {
+// Force CSRF token generation
+const ensureCsrfToken = (req, res, next) => {
+  res.locals.csrfToken = req.csrfToken?.() || '';
+  next();
+};
+
+// ✅ Login form route (GET)
+app.get('/login', ensureCsrfToken, (req, res) => {
   res.render('login', {
-    csrfToken: req.csrfToken(), // ✅ This is the correct function to call
+    csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce
   });
 });
-
-
 
 
 // Login Handler
