@@ -95,17 +95,17 @@ app.use(cookieParser());
 // MISSING: Session middleware configuration
 app.use(session({
   store: new pgSession({ pool: pgPool, tableName: 'session' }),
-  secret: process.env.SESSION_SECRET, // Must be set in .env
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
-  name: '__Host-hc-session',
-  path: '/',                  // Required
-  secure: true,               // Required
-  httpOnly: true,             // Required
-  sameSite: 'lax',         // STRONGEST CSRF protection
-  maxAge: 30 * 24 * 60 * 60 * 1000
-}
+    name: '__Host-hc-session',
+    path: '/',
+    secure: true,
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000
+  }
 }));
 
 app.use((req, res, next) => {
@@ -1891,34 +1891,34 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
 
 // ✅ Custom error for bad tokens
+// Replace the existing CSRF error handler with this simplified version
 app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN' || err.name === 'ForbiddenError') {
     logger.warn('⚠️ Invalid CSRF token');
-
-    // Try regenerating token
-    try {
-      if (!req.session.csrfSecret) {
-        req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
-      }
-      const token = generateToken(req, res);
-      res.cookie('csrf-token', token, {
-        httpOnly: false,
-        sameSite: 'lax',
-        secure: true,
-        path: '/'
-      });
-
-      return res.status(403).render('login', {
-        csrfToken: token,
-        cspNonce: res.locals.cspNonce,
-        error: 'Your session expired. Please try logging in again.'
-      });
-    } catch (genErr) {
-      logger.error('❌ Critical CSRF error:', genErr);
-      return res.status(500).send('Server configuration error');
-    }
+    return res.redirect('/login?error=Invalid%20CSRF%20token.%20Please%20refresh%20and%20try%20again.');
   }
   next(err);
+});
+
+// Then move this to the very end of your middleware chain:
+app.use((err, req, res, next) => {
+  logger.error('❌ Global error handler:', err);
+  
+  // Handle JSON responses
+  if (req.headers.accept && req.headers.accept.includes('application/json')) {
+    return res.status(err.status || 500).json({
+      error: {
+        name: err.name || 'InternalError',
+        message: err.message || 'An unexpected error occurred'
+      }
+    });
+  }
+  
+  // Handle HTML responses
+  res.status(500).render('error', {
+    cspNonce: res.locals.cspNonce,
+    message: 'An unexpected error occurred. Please try again later.'
+  });
 });
 
 
