@@ -103,7 +103,7 @@ app.use(session({
   path: '/',                  // Required
   secure: true,               // Required
   httpOnly: true,             // Required
-  sameSite: 'lax',         // STRONGEST CSRF protection
+  sameSite: 'strict',         // STRONGEST CSRF protection
   maxAge: 30 * 24 * 60 * 60 * 1000
 }
 }));
