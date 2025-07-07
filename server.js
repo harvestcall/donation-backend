@@ -108,18 +108,31 @@ app.use(session({
 }
 }));
 
-const { doubleCsrfProtection, generateToken, invalidCsrfTokenError } = doubleCsrf(options);
+const {
+  doubleCsrfProtection,
+  generateToken,
+  invalidCsrfTokenError
+} = doubleCsrf({
+  getSecret: (req) => req.session.csrfSecret,
+  cookieName: 'csrf-token',
+  size: 64,
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+  getTokenFromRequest: (req) => req.body._csrf || req.headers['csrf-token']
+});
 
 
-// ✅ Assign token as a string — not a function
 // ✅ Middleware to set res.locals.csrfToken and cookie
 app.use((req, res, next) => {
   try {
-    const token = generateToken(req, res);  // ⬅️ only once
+    const token = generateToken(req, res);  // ✅ only once
+    res.cookie('csrf-token', token, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: true
+    });
     res.locals.csrfToken = token;
-    res.cookie(csrfCookieName, token, options.cookieOptions);
   } catch (err) {
-    console.error('❌ CSRF setup failed:', err.message);
+    console.warn('⚠️ Could not generate token:', err.message);
     res.locals.csrfToken = '';
   }
   next();
@@ -1215,21 +1228,24 @@ const ensureCsrfToken = (req, res, next) => {
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
   res.render('login', {
-    csrfToken: res.locals.csrfToken,  // ✅ already generated
+    csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce,
     error: req.query.error
   });
 });
 
 
-// Login Handler
-app.post('/login', 
-  doubleCsrfProtection, // ✅ CSRF validation happens here
 
+// Login Handler
+app.post(
+  '/login',
+  doubleCsrfProtection, // ✅ CSRF token validation (form + cookie)
+
+  // 🛡 Add debug + caching behavior
   (req, res, next) => {
     res.set('Cache-Control', 'no-store');
 
-    // 🔍 Add debugging logs here after CSRF check
+    // Debugging logs
     console.log('🔐 POST /login session:', req.session);
     console.log('🔐 POST /login cookies:', req.cookies);
     console.log('🔐 Received token:', req.body._csrf);
@@ -1237,19 +1253,22 @@ app.post('/login',
     next();
   },
 
-  loginLimiter,
+  loginLimiter, // ✅ Rate limiter (already configured elsewhere)
 
+  // 🔍 Input validation rules
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
-  validateRequest,
+  validateRequest, // ✅ Middleware that handles validation result
 
+  // 🧠 Authentication logic
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
       const normalizedEmail = email.toLowerCase();
 
+      // Fetch account from DB
       const account = await db('staff_accounts')
         .where(db.raw('LOWER(email)'), normalizedEmail)
         .first();
@@ -1273,18 +1292,28 @@ app.post('/login',
         });
       }
 
+      // ✅ Success: regenerate session and redirect
       req.session.regenerate(err => {
-        if (err) return next(new AppError('Login failed. Please try again.', 500));
+        if (err) {
+          return next(new AppError('Login failed. Please try again.', 500));
+        }
+
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
+
+        // Login successful — redirect
         return res.redirect(303, '/staff-dashboard');
       });
     } catch (err) {
+      // 🔥 If CSRF validation failed before reaching here
       if (err === invalidCsrfTokenError) return next(err);
+
+      // Handle unexpected DB or logic error
       next(new DatabaseError('Server error during login.'));
     }
   }
 );
+
 
 
 // Password reset request endpoint
