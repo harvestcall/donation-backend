@@ -151,17 +151,21 @@ app.use(session({
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// 🧠 CSRF middleware setup
+// Use different cookie names for dev/prod
+const csrfCookieName = isProduction 
+  ? "__Host-hc-csrf-token" 
+  : "hc-csrf-token";
+
 const {
   doubleCsrfProtection,
   invalidCsrfTokenError
 } = doubleCsrf({
   getSecret: () => process.env.SESSION_SECRET,
-  cookieName: "__Host-hc-csrf-token",
+  cookieName: csrfCookieName,
   cookieOptions: {
-    sameSite: "strict",
-    path: "/",               // ✅ Required for __Host- prefix
-    secure: isProduction,    // ✅ Conditionally secure
+    sameSite: "lax",  // Changed from strict to lax
+    path: "/",
+    secure: isProduction,
     httpOnly: true,
   },
   size: 64,
