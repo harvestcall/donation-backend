@@ -110,12 +110,17 @@ app.use(session({
 
 const { doubleCsrfProtection, generateToken, invalidCsrfTokenError } = doubleCsrf(options);
 
+
+// ✅ Assign token as a string — not a function
 app.use((req, res, next) => {
-  res.locals.csrfToken = () => {
+  try {
     const token = generateToken(req, res);
+    res.locals.csrfToken = token;
     res.cookie(csrfCookieName, token, options.cookieOptions);
-    return token;
-  };
+  } catch (err) {
+    console.error('CSRF token generation failed:', err.message);
+    res.locals.csrfToken = '';
+  }
   next();
 });
 
