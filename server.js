@@ -131,6 +131,9 @@ const pgPool = new Pool({
 });
 
 app.use(cookieParser());         // MUST come before CSRF
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
 
 // MISSING: Session middleware configuration
 app.use(session({
@@ -1209,34 +1212,28 @@ const ensureCsrfToken = (req, res, next) => {
 
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
-  res.locals.csrfToken = req.csrfToken?.();  // ✅ Generate token
   res.render('login', {
-    csrfToken: res.locals.csrfToken,
-    cspNonce: res.locals.cspNonce
+    csrfToken: req.csrfToken?.() || '',
+    cspNonce: res.locals.cspNonce,
+    error: req.query.error
   });
 });
 
 
+
 // Login Handler
 app.post('/login',
-  doubleCsrfProtection,  // ✅ CSRF must come first!
-
-  // 🛠️ Temporary Debugging: Log tokens
+  doubleCsrfProtection,
   (req, res, next) => {
-    console.log("🚀 Cookie token:", req.cookies['__Host-hc-csrf-token']);
-    console.log("🚀 Form token:", req.body._csrf);
     res.set('Cache-Control', 'no-store');
     next();
   },
-
   loginLimiter,
-
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
   validateRequest,
-
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
@@ -1269,15 +1266,15 @@ app.post('/login',
         if (err) return next(new AppError('Login failed. Please try again.', 500));
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
-
-        // ✅ Prevent form resubmission loop
         return res.redirect(303, '/staff-dashboard');
       });
     } catch (err) {
+      if (err === invalidCsrfTokenError) return next(err);
       next(new DatabaseError('Server error during login.'));
     }
   }
 );
+
 
 
 
@@ -1835,17 +1832,11 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 app.use((err, req, res, next) => {
   if (err === invalidCsrfTokenError) {
     console.warn("⚠️ Invalid CSRF token");
+    return res.redirect('/login?error=Invalid%20CSRF%20token.%20Please%20try%20again.');
+  }
 
-    // Handle HTML vs JSON nicely
-    if (req.accepts('html')) {
-      return res.status(403).render('login', {
-        error: 'Invalid CSRF token. Please try again.',
-        csrfToken: req.csrfToken?.() || '',
-        cspNonce: res.locals.cspNonce
-      });
-    }
-
-    return res.status(403).json({ error: "Invalid CSRF token" });
+  if (err instanceof DatabaseError) {
+    return res.status(500).render('error', { message: 'Database error' });
   }
 
   next(err);
