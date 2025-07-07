@@ -88,7 +88,7 @@
     <% } %>
 
     <form action="/login" method="POST">
-      <input type="hidden" name="_csrf" value="<%= csrfToken() %>">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       
       <label for="email">Email</label>
       <input type="email" name="email" id="email" required />

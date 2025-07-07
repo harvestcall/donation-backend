@@ -1210,14 +1210,11 @@ const ensureCsrfToken = (req, res, next) => {
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
   res.render('login', {
-    csrfToken: res.locals.csrfToken, // ✅ Safe and already generated
+    csrfToken: res.locals.csrfToken(),  // <-- Call it here!
     cspNonce: res.locals.cspNonce,
     error: req.query.error
   });
 });
-
-
-
 
 // Login Handler
 app.post('/login', 
@@ -1851,9 +1848,6 @@ app.use((err, req, res, next) => {
     message: err.message || 'Server error'
   });
 });
-
-
-
 
 
 // ✅ Global error handler
