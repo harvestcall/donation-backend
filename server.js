@@ -102,7 +102,7 @@ app.use(session({
   name: '__Host-hc-session',
   path: '/',                  // Required
   secure: true,               // Required
-  httpOnly: false,             // Required
+  httpOnly: true,             // Required
   sameSite: 'lax',         // STRONGEST CSRF protection
   maxAge: 30 * 24 * 60 * 60 * 1000
 }
@@ -111,21 +111,30 @@ app.use(session({
 app.use((req, res, next) => {
   if (!req.session.csrfSecret) {
     req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+    req.session.save(err => {
+      if (err) logger.error('❌ Failed to save session:', err);
+      next();
+    });
+  } else {
+    next();
   }
-  next();
 });
 
-const {
-  doubleCsrfProtection,
-  generateToken,
-  invalidCsrfTokenError
-} = doubleCsrf({
-  getSecret: (req) => req.session.csrfSecret,
+
+const { doubleCsrfProtection, generateToken } = doubleCsrf({
+  getSecret: (req) => req.session.csrfSecret || '',
   cookieName: 'csrf-token',
   size: 64,
+  cookieOptions: {
+    httpOnly: false,
+    sameSite: 'lax',
+    secure: true,
+    path: '/'
+  },
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
-  getTokenFromRequest: (req) => req.body._csrf || req.headers['csrf-token']
+  getTokenFromRequest: (req) => req.body._csrf || req.headers['x-csrf-token']
 });
+
 
 
 // ✅ Middleware to set res.locals.csrfToken and cookie
@@ -137,18 +146,20 @@ app.use((req, res, next) => {
       res.cookie('csrf-token', token, {
         httpOnly: false,
         sameSite: 'lax',
-        secure: true
+        secure: true,
+        path: '/'  // ✅ ensures cookie is available across routes
       });
       res.locals.csrfToken = token;
     } else {
-      throw new Error('Missing CSRF secret');
+      throw new Error('CSRF secret not found in session');
     }
   } catch (err) {
-    console.warn('⚠️ Could not generate token:', err.message);
+    logger.warn('⚠️ Could not generate CSRF token:', err.message);
     res.locals.csrfToken = '';
   }
   next();
 });
+
 
 
 // CSRF only applies after login page renders
@@ -1275,56 +1286,59 @@ app.post(
   validateRequest, // ✅ Middleware that handles validation result
 
   // 🧠 Authentication logic
-  async (req, res, next) => {
-    try {
-      const { email, password } = req.body;
-      const normalizedEmail = email.toLowerCase();
+  // 🧠 Authentication logic
+async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const normalizedEmail = email.toLowerCase();
 
-      // Fetch account from DB
-      const account = await db('staff_accounts')
-        .where(db.raw('LOWER(email)'), normalizedEmail)
-        .first();
+    // Fetch account from DB
+    const account = await db('staff_accounts')
+      .where(db.raw('LOWER(email)'), normalizedEmail)
+      .first();
 
-      if (!account) {
-        return res.status(401).json({
-          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
-        });
-      }
-
-      if (account.disabled) {
-        return res.status(403).json({
-          error: { name: 'Forbidden', message: 'This account has been disabled.' }
-        });
-      }
-
-      const isMatch = await bcrypt.compare(password, account.password_hash);
-      if (!isMatch) {
-        return res.status(401).json({
-          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
-        });
-      }
-
-      // ✅ Success: regenerate session and redirect
-      req.session.regenerate(err => {
-        if (err) {
-          return next(new AppError('Login failed. Please try again.', 500));
-        }
-
-        req.session.staffId = account.staff_id;
-        req.session.accountId = account.id;
-
-        // Login successful — redirect
-        return res.redirect(303, '/staff-dashboard');
+    if (!account) {
+      return res.status(401).json({
+        error: { name: 'Unauthorized', message: 'Invalid email or password.' }
       });
-    } catch (err) {
-      // 🔥 If CSRF validation failed before reaching here
-      if (err === invalidCsrfTokenError) return next(err);
-
-      // Handle unexpected DB or logic error
-      next(new DatabaseError('Server error during login.'));
     }
+
+    if (account.disabled) {
+      return res.status(403).json({
+        error: { name: 'Forbidden', message: 'This account has been disabled.' }
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, account.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({
+        error: { name: 'Unauthorized', message: 'Invalid email or password.' }
+      });
+    }
+
+    // ✅ Success: regenerate session and redirect
+    req.session.regenerate(err => {
+      if (err) return next(new AppError('Login failed', 500));
+
+      req.session.staffId = account.staff_id;
+      req.session.accountId = account.id;
+
+      if (!req.session.csrfSecret) {
+        req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+      }
+
+      req.session.save(err => {
+        if (err) logger.error('❌ Session save error:', err);
+        res.redirect(303, '/staff-dashboard');
+      });
+    });
+
+  } catch (err) {
+    next(err); // ✅ catch and pass unexpected errors
   }
-);
+});
+
+
 
 // Password reset request endpoint
 app.get('/forgot-password', (req, res) => {
@@ -1879,15 +1893,34 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 // ✅ Custom error for bad tokens
 app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN' || err.name === 'ForbiddenError') {
-    console.warn('⚠️ Invalid CSRF token');
-    return res.status(403).render('login', {
-      csrfToken: res.locals.csrfToken, // REMOVED FUNCTION CALL
-      cspNonce: res.locals.cspNonce,
-      error: 'Invalid CSRF token. Please refresh and try again.'
-    });
+    logger.warn('⚠️ Invalid CSRF token');
+
+    // Try regenerating token
+    try {
+      if (!req.session.csrfSecret) {
+        req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+      }
+      const token = generateToken(req, res);
+      res.cookie('csrf-token', token, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: true,
+        path: '/'
+      });
+
+      return res.status(403).render('login', {
+        csrfToken: token,
+        cspNonce: res.locals.cspNonce,
+        error: 'Your session expired. Please try logging in again.'
+      });
+    } catch (genErr) {
+      logger.error('❌ Critical CSRF error:', genErr);
+      return res.status(500).send('Server configuration error');
+    }
   }
   next(err);
 });
+
 
 
 // ✅ Global error handler
