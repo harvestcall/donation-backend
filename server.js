@@ -102,8 +102,8 @@ app.use(session({
   name: '__Host-hc-session',
   path: '/',                  // Required
   secure: true,               // Required
-  httpOnly: true,             // Required
-  sameSite: 'strict',         // STRONGEST CSRF protection
+  httpOnly: false,             // Required
+  sameSite: 'lax',         // STRONGEST CSRF protection
   maxAge: 30 * 24 * 60 * 60 * 1000
 }
 }));
@@ -113,16 +113,14 @@ const { doubleCsrfProtection, generateToken, invalidCsrfTokenError } = doubleCsr
 
 // ✅ Assign token as a string — not a function
 app.use((req, res, next) => {
-  try {
-    const token = generateToken(req, res);
-    res.locals.csrfToken = token;
-    res.cookie(csrfCookieName, token, options.cookieOptions);
-  } catch (err) {
-    console.error('CSRF token generation failed:', err.message);
-    res.locals.csrfToken = '';
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = generateToken(req, res);
   }
+  res.locals.csrfToken = req.session.csrfToken;
+  res.cookie(csrfCookieName, req.session.csrfToken, options.cookieOptions);
   next();
 });
+
 
 
 // CSRF only applies after login page renders
