@@ -108,6 +108,13 @@ app.use(session({
 }
 }));
 
+app.use((req, res, next) => {
+  if (!req.session.csrfSecret) {
+    req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+  }
+  next();
+});
+
 const {
   doubleCsrfProtection,
   generateToken,
@@ -122,15 +129,20 @@ const {
 
 
 // ✅ Middleware to set res.locals.csrfToken and cookie
+// Update your token generation middleware
 app.use((req, res, next) => {
   try {
-    const token = generateToken(req, res);  // ✅ only once
-    res.cookie('csrf-token', token, {
-      httpOnly: false,
-      sameSite: 'lax',
-      secure: true
-    });
-    res.locals.csrfToken = token;
+    if (req.session.csrfSecret) {
+      const token = generateToken(req, res);
+      res.cookie('csrf-token', token, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: true
+      });
+      res.locals.csrfToken = token;
+    } else {
+      throw new Error('Missing CSRF secret');
+    }
   } catch (err) {
     console.warn('⚠️ Could not generate token:', err.message);
     res.locals.csrfToken = '';
@@ -1314,8 +1326,6 @@ app.post(
   }
 );
 
-
-
 // Password reset request endpoint
 app.get('/forgot-password', (req, res) => {
   const csrfToken = res.locals.csrfToken;
@@ -1871,17 +1881,12 @@ app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN' || err.name === 'ForbiddenError') {
     console.warn('⚠️ Invalid CSRF token');
     return res.status(403).render('login', {
-      csrfToken: res.locals.csrfToken?.(),
+      csrfToken: res.locals.csrfToken, // REMOVED FUNCTION CALL
       cspNonce: res.locals.cspNonce,
       error: 'Invalid CSRF token. Please refresh and try again.'
     });
   }
-
-  // ✅ Move this inside
-  return res.status(500).render('error', {
-    cspNonce: res.locals.cspNonce,
-    message: err.message || 'Server error'
-  });
+  next(err);
 });
 
 
