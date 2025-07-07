@@ -30,8 +30,15 @@ const { csrfCookieName, options } = require('./config/csrf-config');
 
 const {
   doubleCsrfProtection,
-  invalidCsrfTokenError // ✅ Add this!
+  generateToken, // ✅ ADD THIS
+  invalidCsrfTokenError
 } = doubleCsrf(options);
+
+app.use((req, res, next) => {
+  res.locals.csrfToken = generateToken(req, res); // ✅ Safe version
+  next();
+});
+
 
 const app = express();
 app.set('trust proxy', true);  // Trust Render.com proxies
@@ -163,17 +170,6 @@ app.use((req, res, next) => {
   const safePaths = ['/login', '/forgot-password', '/reset-password'];
   if (safePaths.includes(req.path) && req.method === 'GET') return next();
   return doubleCsrfProtection(req, res, next);
-});
-
-// ✅ Attach CSRF token to templates
-app.use((req, res, next) => {
-  try {
-    const token = req.csrfToken?.();
-    res.locals.csrfToken = token;
-    next();
-  } catch (err) {
-    next(); // Let CSRF middleware handle if not needed
-  }
 });
 
 
@@ -1208,19 +1204,13 @@ const ensureCsrfToken = (req, res, next) => {
 
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
-  const csrfToken = req.csrfToken();
-  res.cookie(csrfCookieName, csrfToken, {
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: isProduction,
-    path: '/',
-  });
   res.render('login', {
-    csrfToken,
+    csrfToken: res.locals.csrfToken, // ✅ Safe and already generated
     cspNonce: res.locals.cspNonce,
     error: req.query.error
   });
 });
+
 
 
 
@@ -1841,22 +1831,17 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
 // ✅ Custom error for bad tokens
 app.use((err, req, res, next) => {
-  if (err === invalidCsrfTokenError || err.code === 'EBADCSRFTOKEN') {
+  if (err === invalidCsrfTokenError || err.name === 'ForbiddenError') {
     console.warn("⚠️ Invalid CSRF token");
-
     return res.status(403).render('login', {
-      csrfToken: req.csrfToken?.() || '',
+      csrfToken: res.locals.csrfToken,
       cspNonce: res.locals.cspNonce,
       error: 'Invalid CSRF token. Please refresh and try again.'
     });
   }
-
-  if (err instanceof DatabaseError) {
-    return res.status(500).render('error', { message: 'Database error' });
-  }
-
   next(err);
 });
+
 
 
 // ✅ Global error handler
