@@ -145,11 +145,13 @@ app.use(session({
   secret: process.env.SESSION_SECRET, // Must be set in .env
   resave: false,
   saveUninitialized: false,
-  cookie: { 
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
-  httpOnly: true,
-  maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  cookie: {
+  name: '__Host-hc-session',
+  path: '/',                  // Required
+  secure: true,               // Required
+  httpOnly: true,             // Required
+  sameSite: 'strict',         // STRONGEST CSRF protection
+  maxAge: 30 * 24 * 60 * 60 * 1000
 }
 }));
 
@@ -1198,6 +1200,11 @@ const ensureCsrfToken = (req, res, next) => {
 
 // ✅ Login form route (GET)
 app.get('/login', (req, res) => {
+  // 🔍 Debugging
+  console.log('🔐 GET /login CSRF token:', req.csrfToken?.());
+  console.log('🔐 Session:', req.session);
+  console.log('🔐 Cookies:', req.cookies);
+
   res.render('login', {
     csrfToken: req.csrfToken?.() || '',
     cspNonce: res.locals.cspNonce,
@@ -1207,19 +1214,30 @@ app.get('/login', (req, res) => {
 
 
 
+
 // Login Handler
-app.post('/login',
-  doubleCsrfProtection,
+app.post('/login', 
+  doubleCsrfProtection, // ✅ CSRF validation happens here
+
   (req, res, next) => {
     res.set('Cache-Control', 'no-store');
+
+    // 🔍 Add debugging logs here after CSRF check
+    console.log('🔐 POST /login session:', req.session);
+    console.log('🔐 POST /login cookies:', req.cookies);
+    console.log('🔐 Received token:', req.body._csrf);
+
     next();
   },
+
   loginLimiter,
+
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
   validateRequest,
+
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
@@ -1260,8 +1278,6 @@ app.post('/login',
     }
   }
 );
-
-
 
 
 // Password reset request endpoint

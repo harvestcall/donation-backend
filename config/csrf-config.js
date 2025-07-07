@@ -11,10 +11,10 @@ module.exports = {
     getSecret: () => process.env.SESSION_SECRET,
     cookieName: csrfCookieName,
     cookieOptions: {
-      sameSite: "lax",
-      path: "/",
-      secure: isProduction,
-      httpOnly: true,
+     httpOnly: true,
+    sameSite: 'strict',
+    secure: true,
+     path: '/', // required for __Host- prefix
     },
     size: 64,
     ignoredMethods: ["GET", "HEAD", "OPTIONS"]
