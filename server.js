@@ -22,10 +22,10 @@ const cache = apicache.middleware;
 const formatCurrency = require('./utils/formatCurrency');
 const logger = require('./utils/logger');
 const { notifyAdmin } = require('./utils/alerts');
-const { doubleCsrf } = require('csrf-csrf');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const cookieParser = require('cookie-parser');
+const { doubleCsrf } = require('csrf-csrf');
 
 
 const app = express();
@@ -144,30 +144,36 @@ app.use(session({
 }
 }));
 
-// Add this BEFORE app.use(doubleCsrfProtection);
-app.use(cookieParser());
+const isProduction = process.env.NODE_ENV === 'production';
 
-
-
-const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
+// 🧠 CSRF middleware setup
+const {
+  doubleCsrfProtection,
+  invalidCsrfTokenError
+} = doubleCsrf({
   getSecret: () => process.env.SESSION_SECRET,
   cookieName: "__Host-hc-csrf-token",
   cookieOptions: {
-    sameSite: "lax",
-    secure: process.env.FORCE_SSL === "true", // 🔐 Force HTTPS-only
+    sameSite: "strict",
+    path: "/",               // ✅ Required for __Host- prefix
+    secure: isProduction,    // ✅ Conditionally secure
     httpOnly: true,
   },
+  size: 64,
+  ignoredMethods: ["GET", "HEAD", "OPTIONS"]
 });
 
+// ✅ Middleware order matters!
+app.use(cookieParser());         // MUST come before CSRF
+app.use(doubleCsrfProtection);   // CSRF for all POSTs
 
-// Apply CSRF protection middleware globally (GET + POST)
-app.use(doubleCsrfProtection);
-
-// ✅ Provide CSRF token to EJS templates
+// ✅ Attach CSRF token to templates
 app.use((req, res, next) => {
-  res.locals.csrfToken = req.csrfToken?.();
+  res.locals.csrfToken = req.csrfToken?.() || '';
   next();
 });
+
+
 
 
 // ✅ Rate Limiters
@@ -1200,7 +1206,7 @@ const ensureCsrfToken = (req, res, next) => {
 };
 
 // ✅ Login form route (GET)
-app.get('/login', ensureCsrfToken, (req, res) => {
+app.get('/login', (req, res) => {
   res.render('login', {
     csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce
@@ -1210,9 +1216,8 @@ app.get('/login', ensureCsrfToken, (req, res) => {
 
 // Login Handler
 app.post('/login',
-  doubleCsrfProtection, // ✅ CSRF middleware
+  doubleCsrfProtection,  // CSRF first!
   (req, res, next) => {
-    // ✅ Prevent caching of login POST response
     res.set('Cache-Control', 'no-store');
     next();
   },
@@ -1233,29 +1238,20 @@ app.post('/login',
 
       if (!account) {
         return res.status(401).json({
-          error: {
-            name: 'Unauthorized',
-            message: 'Invalid email or password.'
-          }
+          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
         });
       }
 
       if (account.disabled) {
         return res.status(403).json({
-          error: {
-            name: 'Forbidden',
-            message: 'This account has been disabled.'
-          }
+          error: { name: 'Forbidden', message: 'This account has been disabled.' }
         });
       }
 
       const isMatch = await bcrypt.compare(password, account.password_hash);
       if (!isMatch) {
         return res.status(401).json({
-          error: {
-            name: 'Unauthorized',
-            message: 'Invalid email or password.'
-          }
+          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
         });
       }
 
@@ -1264,7 +1260,7 @@ app.post('/login',
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
 
-        // ✅ Use 303 to avoid form resubmission
+        // 🚫 Prevent form resubmission loop
         return res.redirect(303, '/staff-dashboard');
       });
     } catch (err) {
@@ -1272,7 +1268,6 @@ app.post('/login',
     }
   }
 );
-
 
 
 
@@ -1826,12 +1821,23 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 });
 
 
-// Optional: catch CSRF errors
+// ✅ Custom error for bad tokens
 app.use((err, req, res, next) => {
   if (err === invalidCsrfTokenError) {
     console.warn("⚠️ Invalid CSRF token");
+
+    // Handle HTML vs JSON nicely
+    if (req.accepts('html')) {
+      return res.status(403).render('login', {
+        error: 'Invalid CSRF token. Please try again.',
+        csrfToken: req.csrfToken?.() || '',
+        cspNonce: res.locals.cspNonce
+      });
+    }
+
     return res.status(403).json({ error: "Invalid CSRF token" });
   }
+
   next(err);
 });
 
