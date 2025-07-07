@@ -1845,13 +1845,13 @@ app.use((err, req, res, next) => {
     });
   }
 
-  next(err);
-});
-
-// Other error types
+  // ✅ Move this inside
   return res.status(500).render('error', {
+    cspNonce: res.locals.cspNonce,
     message: err.message || 'Server error'
   });
+});
+
 
 
 
