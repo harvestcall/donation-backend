@@ -28,24 +28,51 @@ const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
 
-const {
-  doubleCsrfProtection,
-  generateToken, // ✅ ADD THIS
-  invalidCsrfTokenError
-} = doubleCsrf(options);
-
-app.use((req, res, next) => {
-  res.locals.csrfToken = generateToken(req, res); // ✅ Safe version
-  next();
-});
-
-
 const app = express();
-app.set('trust proxy', true);  // Trust Render.com proxies
-logger.info('NODE_ENV:', process.env.NODE_ENV);
 
+app.set('trust proxy', true);  // Trust Render.com proxies
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+const isProduction = process.env.NODE_ENV === 'production';
+
+
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString('hex');
+   next();
+});
+
+  // ✅ Helmet is now applied *after* nonce is set, and per request
+  app.use((req, res, next) => {
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: [
+          "'self'",
+          `'nonce-${res.locals.cspNonce}'`,
+          "https://fonts.googleapis.com",
+          "https://cdnjs.cloudflare.com"
+        ],
+        scriptSrc: [
+          "'self'",
+          `'nonce-${res.locals.cspNonce}'`,
+          "https://cdnjs.cloudflare.com"
+        ],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", "https://api.paystack.co"]
+      }
+    },
+    crossOriginEmbedderPolicy: false
+  })(req, res, next);
+});
+
 
 // ✅ CORS Configuration - Added per security recommendation
 app.use(cors({ 
@@ -55,34 +82,57 @@ app.use(cors({
   credentials: true
 }));
 
-app.use((req, res, next) => {
-  res.locals.cspNonce = crypto.randomBytes(16).toString('hex');
+app.use(express.static(path.join(__dirname, 'public')));
 
-  // ✅ Helmet is now applied *after* nonce is set, and per request
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: [
-          "'self'",
-          `'nonce-${res.locals.cspNonce}'`,
-          "https://cdnjs.cloudflare.com",
-          "https://fonts.googleapis.com"
-        ],
-        scriptSrc: [
-          "'self'",
-          `'nonce-${res.locals.cspNonce}'`,
-          "https://cdnjs.cloudflare.com"
-        ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-        imgSrc: ["'self'", "data:"],
-        connectSrc: ["'self'", process.env.PAYSTACK_API_URL || "https://api.paystack.co"]
-      }
-    },
-    crossOriginEmbedderPolicy: false,
-    referrerPolicy: { policy: 'same-origin' }
-  })(req, res, next); // <-- Important: apply helmet immediately
+// Static + body parsers
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({
+  verify: (req, res, buf) => { req.rawBody = buf; }
+}));
+
+app.use(cookieParser());
+
+// MISSING: Session middleware configuration
+app.use(session({
+  store: new pgSession({ pool: pgPool, tableName: 'session' }),
+  secret: process.env.SESSION_SECRET, // Must be set in .env
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+  name: '__Host-hc-session',
+  path: '/',                  // Required
+  secure: true,               // Required
+  httpOnly: true,             // Required
+  sameSite: 'strict',         // STRONGEST CSRF protection
+  maxAge: 30 * 24 * 60 * 60 * 1000
+}
+}));
+
+const { doubleCsrfProtection, generateToken, invalidCsrfTokenError } = doubleCsrf(options);
+
+app.use((req, res, next) => {
+  res.locals.csrfToken = () => {
+    const token = generateToken(req, res);
+    res.cookie(csrfCookieName, token, options.cookieOptions);
+    return token;
+  };
+  next();
 });
+
+
+// CSRF only applies after login page renders
+app.use((req, res, next) => {
+  const safePaths = ['/login', '/forgot-password', '/reset-password'];
+  if (safePaths.includes(req.path) && req.method === 'GET') return next();
+  return doubleCsrfProtection(req, res, next);
+});
+
+// Serve static files from "public" directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(cookieParser());         // MUST come before CSRF
+
+logger.info('NODE_ENV:', process.env.NODE_ENV);
 
 
 const BCRYPT_COST = Math.min(
@@ -108,16 +158,6 @@ const metadataSchema = Joi.object({
   donationType: Joi.string().valid('one-time', 'recurring').optional()
 });
 
-app.use(bodyParser.urlencoded({ extended: true })); // Handle form submissions
-app.use(bodyParser.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf; // Preserve raw body for webhook verification
-  }
-}));
-
-// Serve static files from "public" directory
-app.use(express.static(path.join(__dirname, 'public')));
-
 
 // ✅ Database connection
 const db = require('./db');
@@ -136,41 +176,6 @@ const missingVars = requiredEnvVars.filter(env => !process.env[env]);
 if (missingVars.length > 0) {
   throw new Error(`❌ Critical ENV variables missing: ${missingVars.join(', ')}`);
 }
-
-const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-const isProduction = process.env.NODE_ENV === 'production';
-
-app.use(cookieParser());         // MUST come before CSRF
-
-// MISSING: Session middleware configuration
-app.use(session({
-  store: new pgSession({ pool: pgPool, tableName: 'session' }),
-  secret: process.env.SESSION_SECRET, // Must be set in .env
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-  name: '__Host-hc-session',
-  path: '/',                  // Required
-  secure: true,               // Required
-  httpOnly: true,             // Required
-  sameSite: 'strict',         // STRONGEST CSRF protection
-  maxAge: 30 * 24 * 60 * 60 * 1000
-}
-}));
-
-
-// ✅ Middleware order matters!
-
-// CSRF only applies after login page renders
-app.use((req, res, next) => {
-  const safePaths = ['/login', '/forgot-password', '/reset-password'];
-  if (safePaths.includes(req.path) && req.method === 'GET') return next();
-  return doubleCsrfProtection(req, res, next);
-});
 
 
 // ✅ Rate Limiters
@@ -1831,16 +1836,23 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 
 // ✅ Custom error for bad tokens
 app.use((err, req, res, next) => {
-  if (err === invalidCsrfTokenError || err.name === 'ForbiddenError') {
-    console.warn("⚠️ Invalid CSRF token");
+  if (err.code === 'EBADCSRFTOKEN' || err.name === 'ForbiddenError') {
+    console.warn('⚠️ Invalid CSRF token');
     return res.status(403).render('login', {
-      csrfToken: res.locals.csrfToken,
+      csrfToken: res.locals.csrfToken?.(),
       cspNonce: res.locals.cspNonce,
       error: 'Invalid CSRF token. Please refresh and try again.'
     });
   }
+
   next(err);
 });
+
+// Other error types
+  return res.status(500).render('error', {
+    message: err.message || 'Server error'
+  });
+
 
 
 
