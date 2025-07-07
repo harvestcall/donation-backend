@@ -113,13 +113,24 @@ const { doubleCsrfProtection, generateToken, invalidCsrfTokenError } = doubleCsr
 
 // ✅ Assign token as a string — not a function
 app.use((req, res, next) => {
-  if (!req.session.csrfToken) {
-    req.session.csrfToken = generateToken(req, res);
+  try {
+    // Generate only once if not already stored
+    if (!req.session.csrfToken) {
+      const token = generateToken(req, res); // creates + stores internally
+      req.session.csrfToken = token;
+      res.locals.csrfToken = token;
+      res.cookie(csrfCookieName, token, options.cookieOptions);
+    } else {
+      res.locals.csrfToken = req.session.csrfToken;
+    }
+    next();
+  } catch (err) {
+    console.error('❌ CSRF setup failed:', err.message);
+    res.locals.csrfToken = '';
+    next();
   }
-  res.locals.csrfToken = req.session.csrfToken;
-  res.cookie(csrfCookieName, req.session.csrfToken, options.cookieOptions);
-  next();
 });
+
 
 
 
