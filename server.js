@@ -105,7 +105,7 @@ app.use(session({
   cookie: {
     name: '__Host-hc-session',
     path: '/',
-    secure: true,
+    secure: isProduction, // Only secure in production
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000
@@ -128,7 +128,7 @@ const { doubleCsrfProtection, generateToken } = doubleCsrf({
   cookieOptions: {
     httpOnly: false,
     sameSite: 'lax',
-    secure: true,
+    secure: isProduction, // Only secure in production
     path: '/'
   },
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
@@ -143,17 +143,18 @@ app.use((req, res, next) => {
   try {
     if (req.session.csrfSecret) {
       const token = generateToken(req, res);
-      
+      logger.debug(`[CSRF] Generated token: ${token}`);
       // Set cookie with proper attributes
       res.cookie('csrf-token', token, {
         httpOnly: false,
         sameSite: 'lax',
-        secure: true,
+        secure: isProduction, // Only secure in production
         path: '/',
         maxAge: 1000 * 60 * 15 // 15 minutes
       });
-      
       res.locals.csrfToken = token;
+    } else {
+      logger.warn('[CSRF] No csrfSecret in session!');
     }
   } catch (err) {
     logger.warn('⚠️ CSRF token generation warning:', err.message);
@@ -1265,11 +1266,21 @@ app.post(
   '/login',
   (req, res, next) => {
     // Log session info for debugging
-    logger.debug(`Session ID: ${req.sessionID}`);
-    logger.debug(`CSRF Secret: ${req.session.csrfSecret}`);
+    logger.debug(`[LOGIN] Session ID: ${req.sessionID}`);
+    logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
+    logger.debug(`[LOGIN] Body _csrf: ${req.body._csrf}`);
+    logger.debug(`[LOGIN] Cookie csrf-token: ${req.cookies['csrf-token']}`);
     next();
   },
-  doubleCsrfProtection,
+  (req, res, next) => {
+    // Wrap doubleCsrfProtection to log errors
+    doubleCsrfProtection(req, res, (err) => {
+      if (err) {
+        logger.warn(`[CSRF] doubleCsrfProtection error: ${err.message}`);
+      }
+      next(err);
+    });
+  },
   loginLimiter,
   [
     body('email').isEmail().normalizeEmail().withMessage('Email is required'),
@@ -1308,13 +1319,10 @@ app.post(
       // ✅ Success: regenerate session and redirect
       req.session.regenerate(err => {
         if (err) return next(new AppError('Session regeneration failed', 500));
-        
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
-        
         // Initialize new CSRF secret
         req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
-        
         // Redirect without manual session.save()
         res.redirect(303, '/staff-dashboard');
       });
