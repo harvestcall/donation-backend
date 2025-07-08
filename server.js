@@ -1321,9 +1321,7 @@ app.post(
         if (err) return next(new AppError('Session regeneration failed', 500));
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
-        // Initialize new CSRF secret
-        req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
-        // Redirect without manual session.save()
+        // Do NOT set csrfSecret here! Let the CSRF secret middleware handle it on the next GET
         res.redirect(303, '/staff-dashboard');
       });
     } catch (err) {
