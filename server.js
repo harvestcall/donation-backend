@@ -1249,8 +1249,8 @@ const ensureCsrfToken = (req, res, next) => {
   next();
 };
 
-// ✅ Login form route (GET)
-app.get('/login', (req, res) => {
+// ✅ Login form route (GET) -- ensure CSRF token is generated
+app.get('/login', ensureCsrfToken, (req, res) => {
   res.render('login', {
     csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce,
@@ -1880,7 +1880,7 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 // Replace the existing CSRF error handler with this simplified version
 app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN' || err.name === 'ForbiddenError') {
-    logger.warn('⚠️ Invalid CSRF token');
+    logger.warn('⚠️ CSRF validation failed:', err.message);
     return res.redirect('/login?error=Invalid%20CSRF%20token.%20Please%20refresh%20and%20try%20again.');
   }
   next(err);
@@ -1968,6 +1968,7 @@ async function startServer() {
     logger.info('🔧 Running initial index maintenance...');
     await runIndexMaintenance();
 
+    
     logger.info('🚀 Starting Express server...');
     app.listen(PORT, () => {
       logger.info(`✅ Server is running on port ${PORT}`);
