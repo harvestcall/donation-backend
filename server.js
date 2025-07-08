@@ -366,14 +366,18 @@ async function initializeDatabase() {
 
 
 app.get('/', (req, res, next) => {
+  logger.debug('[ROUTE /] --- TOP OF ROUTE ---');
+  logger.debug('[ROUTE /] Request cookies:', req.cookies);
   logger.debug('[ROUTE /] Session ID:', req.sessionID);
   logger.debug('[ROUTE /] Session:', req.session);
   logger.debug('[ROUTE /] res.locals.csrfToken:', res.locals.csrfToken);
   try {
+    logger.debug('[ROUTE /] About to render donation-form EJS');
     res.render('donation-form', {
       cspNonce: res.locals.cspNonce,
       csrfToken: res.locals.csrfToken // Pass CSRF token to template
     });
+    logger.debug('[ROUTE /] donation-form EJS render call completed');
   } catch (err) {
     logger.error('[ROUTE /] Render error:', err);
     next(err);
