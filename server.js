@@ -351,6 +351,11 @@ class NotFoundError extends AppError {
   }
 }
 
+// Health check endpoint (for Render and debugging)
+app.get('/healthz', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // ✅ Database initialization
 async function initializeDatabase() {
   try {
