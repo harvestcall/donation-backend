@@ -363,9 +363,11 @@ async function initializeDatabase() {
   }
 }
 
-  app.get('/', (req, res) => {
+
+app.get('/', (req, res) => {
   res.render('donation-form', {
-    cspNonce: res.locals.cspNonce
+    cspNonce: res.locals.cspNonce,
+    csrfToken: res.locals.csrfToken // Pass CSRF token to template
   });
 });
 
