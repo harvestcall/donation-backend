@@ -94,6 +94,7 @@ app.use(cookieParser());
 
 // MISSING: Session middleware configuration
 app.use(session({
+  name: '__Host-hc-session', // Correct placement for session cookie name
   store: new pgSession({ 
     pool: pgPool, 
     tableName: 'session',
@@ -103,7 +104,6 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    name: '__Host-hc-session',
     path: '/',
     secure: isProduction, // Only secure in production
     httpOnly: true,
