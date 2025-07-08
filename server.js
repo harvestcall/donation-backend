@@ -365,6 +365,9 @@ async function initializeDatabase() {
 
 
 app.get('/', (req, res) => {
+  logger.debug('[ROUTE /] Session ID:', req.sessionID);
+  logger.debug('[ROUTE /] Session:', req.session);
+  logger.debug('[ROUTE /] res.locals.csrfToken:', res.locals.csrfToken);
   res.render('donation-form', {
     cspNonce: res.locals.cspNonce,
     csrfToken: res.locals.csrfToken // Pass CSRF token to template
