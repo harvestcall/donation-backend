@@ -364,14 +364,20 @@ async function initializeDatabase() {
 }
 
 
-app.get('/', (req, res) => {
+
+app.get('/', (req, res, next) => {
   logger.debug('[ROUTE /] Session ID:', req.sessionID);
   logger.debug('[ROUTE /] Session:', req.session);
   logger.debug('[ROUTE /] res.locals.csrfToken:', res.locals.csrfToken);
-  res.render('donation-form', {
-    cspNonce: res.locals.cspNonce,
-    csrfToken: res.locals.csrfToken // Pass CSRF token to template
-  });
+  try {
+    res.render('donation-form', {
+      cspNonce: res.locals.cspNonce,
+      csrfToken: res.locals.csrfToken // Pass CSRF token to template
+    });
+  } catch (err) {
+    logger.error('[ROUTE /] Render error:', err);
+    next(err);
+  }
 });
 
 
