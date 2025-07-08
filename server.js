@@ -370,7 +370,7 @@ async function initializeDatabase() {
 
 
 
-app.get('/', (req, res, next) => {
+app.get('/test-home', (req, res, next) => {
   logger.debug('[ROUTE /] --- TOP OF ROUTE ---');
   logger.debug('[ROUTE /] Request cookies:', req.cookies);
   logger.debug('[ROUTE /] Session ID:', req.sessionID);
