@@ -1940,8 +1940,9 @@ app.use((err, req, res, next) => {
 
   logger.error('❌ Global error handler:', err);
 
-  // 🧠 Respond with JSON if client expects it
-  if (req.headers.accept && req.headers.accept.includes('application/json')) {
+  // Always return JSON for API endpoints
+  const apiLike = req.path.startsWith('/initialize-payment') || req.path.startsWith('/webhook') || req.path.startsWith('/api/') || req.path.startsWith('/staff') || req.path.startsWith('/projects');
+  if (apiLike || (req.headers.accept && req.headers.accept.includes('application/json'))) {
     const status = err.status || 500;
     const response = {
       error: {
@@ -1949,15 +1950,13 @@ app.use((err, req, res, next) => {
         message: err.message || 'An unexpected error occurred'
       }
     };
-
     if (process.env.NODE_ENV === 'development') {
       response.error.stack = err.stack;
     }
-
     return res.status(status).json(response);
   }
 
-  // 🧠 Otherwise render fallback error page
+  // Otherwise render fallback error page
   res.status(500).render('error', {
     cspNonce: res.locals.cspNonce,
     message: 'An unexpected error occurred. Please try again later.'
