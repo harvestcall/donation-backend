@@ -64,7 +64,7 @@ app.use((req, res, next) => {
           `'nonce-${res.locals.cspNonce}'`,
           "https://cdnjs.cloudflare.com"
         ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
         imgSrc: ["'self'", "data:"],
         connectSrc: ["'self'", "https://api.paystack.co"]
       }
