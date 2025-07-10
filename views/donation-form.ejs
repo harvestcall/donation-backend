@@ -249,11 +249,13 @@
         </div>
     </div>
 
-    <script<%= typeof cspNonce !== 'undefined' ? ' nonce="' + cspNonce + '"' : '' %}></script>
-        let currentAllocationType = 'staff';
-        let selectedAllocation = null;
-        let staffMembers = [];
-        let projects = [];
+
+
+    <script<%= typeof cspNonce !== 'undefined' ? ' nonce="' + cspNonce + '"' : '' %>>
+let currentAllocationType = 'staff';
+let selectedAllocation = null;
+let staffMembers = [];
+let projects = [];
 
         const mockStaff = [
             { id: 1, name: "Chinwe Okonkwo" },
