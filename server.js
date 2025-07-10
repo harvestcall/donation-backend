@@ -371,11 +371,18 @@ async function initializeDatabase() {
 
 
 app.get('/test-home', (req, res, next) => {
-  logger.debug('[ROUTE /] --- TOP OF ROUTE ---');
-  logger.debug('[ROUTE /] Request cookies:', req.cookies);
-  logger.debug('[ROUTE /] Session ID:', req.sessionID);
-  logger.debug('[ROUTE /] Session:', req.session);
-  logger.debug('[ROUTE /] res.locals.csrfToken:', res.locals.csrfToken);
+  logger.debug('[ROUTE /test-home] --- TOP OF ROUTE ---');
+  logger.debug('[ROUTE /test-home] Request cookies:', req.cookies);
+  logger.debug('[ROUTE /test-home] Session ID:', req.sessionID);
+  logger.debug('[ROUTE /test-home] Session:', req.session);
+  logger.debug('[ROUTE /test-home] res.locals.csrfToken:', res.locals.csrfToken);
+  if (typeof req.csrfToken === 'function') {
+    try {
+      logger.debug('[ROUTE /test-home] req.csrfToken():', req.csrfToken());
+    } catch (err) {
+      logger.warn('[ROUTE /test-home] req.csrfToken() error:', err.message);
+    }
+  }
   try {
     logger.debug('[ROUTE /] About to render donation-form EJS');
     res.render('donation-form', {
@@ -404,6 +411,12 @@ app.get('/test-home', (req, res, next) => {
 app.post('/initialize-payment',
   paymentLimiter,
   async (req, res) => {
+    logger.debug('[POST /initialize-payment] --- TOP OF ROUTE ---');
+    logger.debug('[POST /initialize-payment] Request cookies:', req.cookies);
+    logger.debug('[POST /initialize-payment] Session ID:', req.sessionID);
+    logger.debug('[POST /initialize-payment] Session:', req.session);
+    logger.debug('[POST /initialize-payment] X-CSRF-Token header:', req.headers['x-csrf-token']);
+    logger.debug('[POST /initialize-payment] body._csrf:', req.body._csrf);
     try {
       const { email, amount, currency, metadata } = req.body;
       const amountInKobo = amount * 100;
