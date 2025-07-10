@@ -71,27 +71,27 @@
                         <span class="amount-label">Sends missionaries</span>
                     </div>
                     
-                    <div class="amount-btn usd-amount" data-amount="25" style="display: none;">
+                    <div class="amount-btn usd-amount" data-amount="25" hidden>
                         <span class="amount-value">$25</span>
                         <span class="amount-label">Equips 1 believer</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="50" style="display: none;">
+                    <div class="amount-btn usd-amount" data-amount="50" hidden>
                         <span class="amount-value">$50</span>
                         <span class="amount-label">Trains a family</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="75" style="display: none;">
+                    <div class="amount-btn usd-amount" data-amount="75" hidden>
                         <span class="amount-value">$75</span>
                         <span class="amount-label">Supports a leader</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="100" style="display: none;">
+                    <div class="amount-btn usd-amount" data-amount="100" hidden>
                         <span class="amount-value">$100</span>
                         <span class="amount-label">Produces resources</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="150" style="display: none;">
+                    <div class="amount-btn usd-amount" data-amount="150" hidden>
                         <span class="amount-value">$150</span>
                         <span class="amount-label">Mobilizes leaders</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="200" style="display: none;">
+                    <div class="amount-btn usd-amount" data-amount="200" hidden>
                         <span class="amount-value">$200</span>
                         <span class="amount-label">Sends missionaries</span>
                     </div>
@@ -403,12 +403,24 @@
                     const currency = btn.dataset.currency;
                     
                     if (currency === 'NGN') {
-                        ngnAmounts.forEach(el => el.style.display = 'flex');
-                        usdAmounts.forEach(el => el.style.display = 'none');
+                        ngnAmounts.forEach(el => {
+                            el.style.display = 'flex';
+                            el.hidden = false;
+                        });
+                        usdAmounts.forEach(el => {
+                            el.style.display = 'none';
+                            el.hidden = true;
+                        });
                         currencySymbol.textContent = '₦';
                     } else {
-                        ngnAmounts.forEach(el => el.style.display = 'none');
-                        usdAmounts.forEach(el => el.style.display = 'flex');
+                        ngnAmounts.forEach(el => {
+                            el.style.display = 'none';
+                            el.hidden = true;
+                        });
+                        usdAmounts.forEach(el => {
+                            el.style.display = 'flex';
+                            el.hidden = false;
+                        });
                         currencySymbol.textContent = '$';
                     }
                 });

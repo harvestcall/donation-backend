@@ -400,45 +400,58 @@ app.get('/test-home', (req, res, next) => {
   });
 
 
-
 // Payment initialization endpoint
 app.post('/initialize-payment',
   paymentLimiter,
-  async (req, res, next) => {
-  try {
-    const { email, amount, currency, metadata } = req.body;
-    const amountInKobo = amount * 100;
+  async (req, res) => {
+    try {
+      const { email, amount, currency, metadata } = req.body;
+      const amountInKobo = amount * 100;
 
-    const paymentData = {
-      email,
-      amount: amountInKobo,
-      currency,
-      metadata,
-      callback_url: `${process.env.FRONTEND_BASE_URL}/thank-you`
-    };
+      const paymentData = {
+        email,
+        amount: amountInKobo,
+        currency,
+        metadata,
+        callback_url: `${process.env.FRONTEND_BASE_URL}/thank-you`
+      };
 
-    const response = await axios.post(
-      'https://api.paystack.co/transaction/initialize',
-      paymentData,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-          'Content-Type': 'application/json'
+      const response = await axios.post(
+        'https://api.paystack.co/transaction/initialize',
+        paymentData,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+          }
         }
+      );
+
+      res.json({
+        status: 'success',
+        authorization_url: response.data.data.authorization_url,
+        reference: response.data.data.reference
+      });
+
+    } catch (error) {
+      logger.error(error.response?.data || error.message);
+      // Always return JSON error for frontend
+      if (error.response && error.response.data) {
+        // Paystack or axios error with response
+        return res.status(error.response.status || 500).json({
+          status: 'error',
+          message: error.response.data.message || 'Payment initialization failed',
+          details: error.response.data
+        });
       }
-    );
-
-    res.json({
-      status: 'success',
-      authorization_url: response.data.data.authorization_url,
-      reference: response.data.data.reference
-    });
-
-  } catch (error) {
-    logger.error(error.response?.data || error.message);
-    next(new DatabaseError('Payment initialization failed'));
+      // Other error
+      res.status(500).json({
+        status: 'error',
+        message: error.message || 'Payment initialization failed'
+      });
+    }
   }
-});
+);
 
 // Webhook for payment verification
 app.post('/webhook',
