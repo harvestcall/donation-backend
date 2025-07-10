@@ -370,17 +370,17 @@ async function initializeDatabase() {
 }
 
 
-app.get('/test-home', (req, res, next) => {
-  logger.debug('[ROUTE /test-home] --- TOP OF ROUTE ---');
-  logger.debug('[ROUTE /test-home] Request cookies:', req.cookies);
-  logger.debug('[ROUTE /test-home] Session ID:', req.sessionID);
-  logger.debug('[ROUTE /test-home] Session:', req.session);
-  logger.debug('[ROUTE /test-home] res.locals.csrfToken:', res.locals.csrfToken);
+app.get('/', (req, res, next) => {
+  logger.debug('[ROUTE /] --- TOP OF ROUTE ---');
+  logger.debug('[ROUTE /] Request cookies:', req.cookies);
+  logger.debug('[ROUTE /] Session ID:', req.sessionID);
+  logger.debug('[ROUTE /] Session:', req.session);
+  logger.debug('[ROUTE /] res.locals.csrfToken:', res.locals.csrfToken);
   if (typeof req.csrfToken === 'function') {
     try {
-      logger.debug('[ROUTE /test-home] req.csrfToken():', req.csrfToken());
+      logger.debug('[ROUTE /] req.csrfToken():', req.csrfToken());
     } catch (err) {
-      logger.warn('[ROUTE /test-home] req.csrfToken() error:', err.message);
+      logger.warn('[ROUTE /] req.csrfToken() error:', err.message);
     }
   }
   try {
