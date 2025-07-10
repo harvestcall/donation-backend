@@ -755,7 +755,7 @@
         </div>
     </div>
 
-    <script<%= typeof cspNonce !== 'undefined' ? ' nonce="' + cspNonce + '"' : '' %>>
+    <script nonce="<%= typeof cspNonce !== 'undefined' ? cspNonce : '' %>">
         let currentAllocationType = 'staff';
         let selectedAllocation = null;
         let staffMembers = [];
