@@ -545,6 +545,7 @@
                             'Content-Type': 'application/json',
                             'X-CSRF-Token': getCsrfToken()
                         },
+                        credentials: 'same-origin', // Ensure session cookie is sent
                         body: JSON.stringify(payload)
                     });
                     
