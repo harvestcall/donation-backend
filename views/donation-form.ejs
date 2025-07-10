@@ -7,12 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/donation-form.css">
 </head>
-</head>
 <body>
     <div class="donation-container">
         <div class="donation-header">
             <h1 class="header-title">Partner With Us</h1>
-            <p class="header-subtitle">Your support enables us to continue our important work</p>
+            <p class="header-subtitle">Your gift equips and sends African believers into the Lord’s global harvest</p>
         </div>
         
         <div class="donation-section">
@@ -71,27 +70,28 @@
                         <span class="amount-label">Sends missionaries</span>
                     </div>
                     
-                    <div class="amount-btn usd-amount" data-amount="25" hidden>
+                    <!-- USD amounts initially hidden with CSS -->
+                    <div class="amount-btn usd-amount" data-amount="25" style="display: none;">
                         <span class="amount-value">$25</span>
                         <span class="amount-label">Equips 1 believer</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="50" hidden>
+                    <div class="amount-btn usd-amount" data-amount="50" style="display: none;">
                         <span class="amount-value">$50</span>
                         <span class="amount-label">Trains a family</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="75" hidden>
+                    <div class="amount-btn usd-amount" data-amount="75" style="display: none;">
                         <span class="amount-value">$75</span>
                         <span class="amount-label">Supports a leader</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="100" hidden>
+                    <div class="amount-btn usd-amount" data-amount="100" style="display: none;">
                         <span class="amount-value">$100</span>
                         <span class="amount-label">Produces resources</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="150" hidden>
+                    <div class="amount-btn usd-amount" data-amount="150" style="display: none;">
                         <span class="amount-value">$150</span>
                         <span class="amount-label">Mobilizes leaders</span>
                     </div>
-                    <div class="amount-btn usd-amount" data-amount="200" hidden>
+                    <div class="amount-btn usd-amount" data-amount="200" style="display: none;">
                         <span class="amount-value">$200</span>
                         <span class="amount-label">Sends missionaries</span>
                     </div>
@@ -395,6 +395,18 @@
             const currencySymbol = document.getElementById('currency-symbol');
             const ngnAmounts = document.querySelectorAll('.amount-btn:not(.usd-amount)');
             const usdAmounts = document.querySelectorAll('.usd-amount');
+            
+            // Hide USD amounts on initial load
+            usdAmounts.forEach(el => {
+                el.style.display = 'none';
+                el.hidden = true;
+            });
+            
+            // Show NGN amounts on initial load
+            ngnAmounts.forEach(el => {
+                el.style.display = 'flex';
+                el.hidden = false;
+            });
             
             currencyBtns.forEach(btn => {
                 btn.addEventListener('click', () => {
