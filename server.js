@@ -1,30 +1,4 @@
-// --- GLOBAL ERROR HANDLER ---
-// This must be the last middleware
-app.use((err, req, res, next) => {
-  // Log the error
-  logger.error('[GLOBAL ERROR]', err);
-
-  // If the request expects JSON or is an API route, return JSON error
-  const wantsJson = req.xhr || req.headers.accept?.includes('json') || req.path.startsWith('/initialize-payment') || req.path.startsWith('/api/') || req.path.startsWith('/webhook');
-
-  if (wantsJson) {
-    res.status(err.status || 500).json({
-      status: 'error',
-      message: err.message || 'An unexpected error occurred',
-      error: err.error || undefined
-    });
-    return;
-  }
-
-  // Otherwise, render a generic error page (for web UI)
-  res.status(err.status || 500);
-  res.send(`
-    <html><head><title>Error</title></head><body>
-      <h2>Something went wrong</h2>
-      <pre>${err.message || 'An unexpected error occurred.'}</pre>
-    </body></html>
-  `);
-});
+// (Global error handler is defined at the end of the file, after all routes and middleware)
 // ✅ Load environment variables
 require('dotenv').config();
 
