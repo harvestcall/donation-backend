@@ -362,3 +362,15 @@
 {"level":"info","message":"✅ ANALYZE donations completed","timestamp":"2025-07-10T08:29:38.902Z"}
 {"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-10T08:29:38.902Z"}
 {"level":"info","message":"✅ Server is running on port 5000","timestamp":"2025-07-10T08:29:38.907Z"}
+{"level":"info","message":"NODE_ENV:","timestamp":"2025-07-10T08:42:11.665Z"}
+{"level":"info","message":"🔒 Using bcrypt cost factor: 12","timestamp":"2025-07-10T08:42:11.669Z"}
+{"connectionString":"postgresql://harvestcall_giving_db_user:uzWs27MD3ilpn56DVcIqYrGFoJ2nJJsH@dpg-d1f146er433s73fofr10-a.oregon-postgres.render.com/harvestcall_giving_db","level":"info","message":"🛠 Using DB Connection:","ssl":{"rejectUnauthorized":false},"timestamp":"2025-07-10T08:42:11.915Z"}
+{"level":"info","message":"🌍 Running in environment:","timestamp":"2025-07-10T08:42:11.915Z"}
+{"level":"info","message":"⏳ Initializing database...","timestamp":"2025-07-10T08:42:11.919Z"}
+{"level":"info","message":"📦 Migrations completed","timestamp":"2025-07-10T08:42:17.481Z"}
+{"0":{"active":true,"created_at":"2025-06-28T19:38:31.927Z","email":"gabriel.ojo@harvestcallafrica.org","id":1,"name":"Gabriel & Dolapo Ojo","updated_at":"2025-06-28T19:38:31.927Z"},"1":{"active":true,"created_at":"2025-06-28T19:38:31.927Z","email":"samuel.olatunji@harvestcallafrica.org","id":2,"name":"Samuel & Grace Olatunji","updated_at":"2025-06-28T19:38:31.927Z"},"2":{"active":true,"created_at":"2025-06-28T19:38:31.927Z","email":"mercy.yusuf@harvestcallafrica.org","id":3,"name":"Mercy Yusuf","updated_at":"2025-06-28T19:38:31.927Z"},"3":{"active":true,"created_at":"2025-06-29T06:54:53.748Z","email":"jumping@harvestcallafrica.org","id":4,"name":"Ray Clement","updated_at":"2025-06-29T06:54:53.748Z"},"4":{"active":true,"created_at":"2025-06-29T07:02:06.191Z","email":"dance@harvestcallafrica.org","id":5,"name":"Tom Ginger","updated_at":"2025-06-29T07:02:06.191Z"},"level":"info","message":"👥 Staff records:","timestamp":"2025-07-10T08:42:17.738Z"}
+{"level":"info","message":"🔧 Running initial index maintenance...","timestamp":"2025-07-10T08:42:17.739Z"}
+{"level":"info","message":"🔄 Starting index maintenance...","timestamp":"2025-07-10T08:42:17.739Z"}
+{"level":"info","message":"✅ ANALYZE donations completed","timestamp":"2025-07-10T08:42:17.994Z"}
+{"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-10T08:42:17.994Z"}
+{"level":"info","message":"✅ Server is running on port 5000","timestamp":"2025-07-10T08:42:18.006Z"}

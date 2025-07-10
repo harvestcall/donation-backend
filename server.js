@@ -1920,6 +1920,16 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN' || err.name === 'ForbiddenError') {
     logger.warn('⚠️ CSRF validation failed:', err.message);
+    // Return JSON for API endpoints, otherwise redirect
+    const apiLike = req.path.startsWith('/initialize-payment') || req.path.startsWith('/webhook') || req.path.startsWith('/api/') || req.path.startsWith('/staff') || req.path.startsWith('/projects');
+    if (apiLike || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+      return res.status(403).json({
+        error: {
+          name: 'ForbiddenError',
+          message: 'Invalid CSRF token. Please refresh and try again.'
+        }
+      });
+    }
     return res.redirect('/login?error=Invalid%20CSRF%20token.%20Please%20refresh%20and%20try%20again.');
   }
   next(err);
