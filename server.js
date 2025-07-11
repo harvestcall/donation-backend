@@ -43,38 +43,39 @@ const pgPool = new Pool({
 const isProduction = process.env.NODE_ENV === 'production';
 
 
+// Generate CSP nonce per request
 app.use((req, res, next) => {
-  res.locals.cspNonce = crypto.randomBytes(16).toString('hex');
-   next();
+  res.locals.cspNonce = Buffer.from(crypto.randomBytes(16)).toString('base64');
+  next();
 });
 
-  // ✅ Helmet is now applied *after* nonce is set, and per request
-app.use(helmet.contentSecurityPolicy({
-  useDefaults: false, // ✅ Required to prevent Helmet from overriding your settings
-  directives: {
-    defaultSrc: ["'self'"],
-    styleSrc: [
-      "'self'",
-      (req, res) => `'nonce-${res.locals.cspNonce}'`,
-      "https://fonts.googleapis.com ",
-      "https://cdnjs.cloudflare.com "
-    ],
-    scriptSrc: [
-      "'self'",
-      (req, res) => `'nonce-${res.locals.cspNonce}'`,
-      "https://cdnjs.cloudflare.com "
-    ],
-    fontSrc: [
-      "'self'",
-      "https://fonts.gstatic.com ",
-      "https://cdnjs.cloudflare.com "
-    ],
-    imgSrc: ["'self'", "data:"],
-    connectSrc: ["'self'", "https://api.paystack.co "]
-  },
-  crossOriginEmbedderPolicy: false,
-  reportOnly: false
-}));
+// Apply CSP headers using middleware wrapper
+app.use((req, res, next) => {
+  helmet.contentSecurityPolicy({
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: [
+        "'self'",
+        `'nonce-${res.locals.cspNonce}'`,
+        "https://fonts.googleapis.com ",
+        "https://cdnjs.cloudflare.com "
+      ],
+      scriptSrc: [
+        "'self'",
+        `'nonce-${res.locals.cspNonce}'`,
+        "https://cdnjs.cloudflare.com "
+      ],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com ",
+        "https://cdnjs.cloudflare.com "
+      ],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "https://api.paystack.co "]
+    }
+  })(req, res, next);
+});
 
 const doubleCsrfProtection = doubleCsrf(options);
 app.use(doubleCsrfProtection);
