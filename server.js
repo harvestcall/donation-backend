@@ -1,4 +1,3 @@
-// (Global error handler is defined at the end of the file, after all routes and middleware)
 // ✅ Load environment variables
 require('dotenv').config();
 
@@ -167,10 +166,7 @@ app.use((req, res, next) => {
   next(); // Remove manual session.save() here
 });
 
-const ensureCsrfToken = (req, res, next) => {
-  res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
-  next();
-};
+
 
 
 // ✅ Single CSRF Token Generation Middleware
@@ -303,6 +299,11 @@ const verifyPaystackWebhook = (req, res, next) => {
     return next();
   }
   res.status(401).send('Unauthorized');
+};
+
+const ensureCsrfToken = (req, res, next) => {
+  res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
+  next();
 };
 
 
@@ -1472,7 +1473,13 @@ app.get('/reset-password', (req, res) => {
   res.render('reset-password', { csrfToken, token });
 });
 
-
+// 🔐 Staff Authentication Middleware
+const requireStaffAuth = (req, res, next) => {
+  if (req.session && req.session.staffId) {
+    return next();
+  }
+  res.redirect('/login');
+};
 
 // ✅ Change Password - GET
 app.get('/change-password', requireStaffAuth, ensureCsrfToken, (req, res) => {
@@ -1608,15 +1615,6 @@ app.get('/reset-password', (req, res) => {
     </html>
   `);
 });
-
-// 🔐 Staff Authentication Middleware
-const requireStaffAuth = (req, res, next) => {
-  if (req.session && req.session.staffId) {
-    return next();
-  }
-  res.redirect('/login');
-};
-
 
 // Staff Dashboard Route
 app.get('/staff-dashboard', requireStaffAuth, async (req, res, next) => {
