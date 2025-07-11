@@ -49,8 +49,8 @@ app.use((req, res, next) => {
 });
 
   // ✅ Helmet is now applied *after* nonce is set, and per request
-app.use(helmet({
-  contentSecurityPolicy: {
+app.use(helmet.contentSecurityPolicy({
+  directives: {
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: [
