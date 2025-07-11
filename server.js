@@ -27,7 +27,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
-
+ 
 
 const app = express();
 
@@ -77,8 +77,7 @@ app.use((req, res, next) => {
   })(req, res, next);
 });
 
-const doubleCsrfProtection = doubleCsrf(options);
-app.use(doubleCsrfProtection);
+const { doubleCsrfProtection } = doubleCsrf(options);
 
 // ✅ CORS Configuration - Added per security recommendation
 app.use(cors({ 
@@ -154,7 +153,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
 
 
 // CSRF only applies after login page renders
