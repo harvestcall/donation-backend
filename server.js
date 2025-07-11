@@ -50,30 +50,30 @@ app.use((req, res, next) => {
 
   // ✅ Helmet is now applied *after* nonce is set, and per request
 app.use(helmet.contentSecurityPolicy({
+  useDefaults: false, // ✅ Required to prevent Helmet from overriding your settings
   directives: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: [
-        "'self'",
-        (req, res) => `'nonce-${res.locals.cspNonce}'`,
-        "https://fonts.googleapis.com",
-        "https://cdnjs.cloudflare.com"
-      ],
-      scriptSrc: [
-        "'self'",
-        (req, res) => `'nonce-${res.locals.cspNonce}'`,
-        "https://cdnjs.cloudflare.com"
-      ],
-      fontSrc: [
-        "'self'",
-        "https://fonts.gstatic.com",
-        "https://cdnjs.cloudflare.com"
-      ],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", "https://api.paystack.co"]
-    }
+    defaultSrc: ["'self'"],
+    styleSrc: [
+      "'self'",
+      (req, res) => `'nonce-${res.locals.cspNonce}'`,
+      "https://fonts.googleapis.com ",
+      "https://cdnjs.cloudflare.com "
+    ],
+    scriptSrc: [
+      "'self'",
+      (req, res) => `'nonce-${res.locals.cspNonce}'`,
+      "https://cdnjs.cloudflare.com "
+    ],
+    fontSrc: [
+      "'self'",
+      "https://fonts.gstatic.com ",
+      "https://cdnjs.cloudflare.com "
+    ],
+    imgSrc: ["'self'", "data:"],
+    connectSrc: ["'self'", "https://api.paystack.co "]
   },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  reportOnly: false
 }));
 
 const doubleCsrfProtection = doubleCsrf(options);
