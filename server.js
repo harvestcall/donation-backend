@@ -27,7 +27,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
-const doubleCsrfProtection = doubleCsrf(options);
+
 
 const app = express();
 
@@ -76,6 +76,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
+const doubleCsrfProtection = doubleCsrf(options);
 app.use(doubleCsrfProtection);
 
 // ✅ CORS Configuration - Added per security recommendation
