@@ -28,6 +28,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
+const { body, validationResult } = require('express-validator');
 
 const app = express();
 
@@ -49,29 +50,74 @@ app.use((req, res, next) => {
 });
 
   // ✅ Helmet is now applied *after* nonce is set, and per request
-  app.use((req, res, next) => {
+  // ✅ Enhanced CSP + CSRF protection with detailed logging
+app.use((req, res, next) => {
+  // First, apply CSP and other headers
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         styleSrc: [
           "'self'",
-          `'nonce-${res.locals.cspNonce}'`,
-          "https://fonts.googleapis.com",
-          "https://cdnjs.cloudflare.com"
+          `nonce-${res.locals.cspNonce}`, // Allow inline styles with valid nonce
+          "https://fonts.googleapis.com ",
+          "https://cdnjs.cloudflare.com "
         ],
         scriptSrc: [
           "'self'",
-          `'nonce-${res.locals.cspNonce}'`,
-          "https://cdnjs.cloudflare.com"
+          `nonce-${res.locals.cspNonce}`, // Allow inline scripts with valid nonce
+          "https://cdnjs.cloudflare.com "  // External JS like Font Awesome
         ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-        imgSrc: ["'self'", "data:"],
-        connectSrc: ["'self'", "https://api.paystack.co"]
+        fontSrc: [
+          "'self'",
+          "https://fonts.gstatic.com ",
+          "https://cdnjs.cloudflare.com "
+        ],
+        imgSrc: [
+          "'self'",
+          "data:"
+        ],
+        connectSrc: [
+          "'self'",
+          "https://api.paystack.co "
+        ]
       }
     },
     crossOriginEmbedderPolicy: false
-  })(req, res, next);
+  })(req, res, () => {
+    // Then run CSRF protection with logging
+    doubleCsrfProtection(req, res, (err) => {
+      if (err) {
+        logger.warn('[CSRF] Validation failed:', {
+          url: req.url,
+          method: req.method,
+          csrfCookie: req.cookies['csrf-token'] ? 'present' : 'missing',
+          csrfBody: req.body._csrf ? 'present' : 'missing',
+          csrfSessionSecret: req.session.csrfSecret ? 'present' : 'missing',
+          error: err.message
+        });
+
+        // Optional: Add debug headers for dev environments
+        if (process.env.NODE_ENV !== 'production') {
+          res.setHeader('X-Debug-CSRF', JSON.stringify({
+            cookie: req.cookies['csrf-token'],
+            body: req.body._csrf,
+            secret: req.session.csrfSecret,
+            error: err.message
+          }));
+        }
+
+        return res.status(403).json({
+          error: {
+            name: 'ForbiddenError',
+            message: 'Invalid CSRF token. Please refresh and try again.',
+            details: process.env.NODE_ENV === 'development' ? err.message : undefined
+          }
+        });
+      }
+      next();
+    });
+  });
 });
 
 
@@ -121,38 +167,28 @@ app.use((req, res, next) => {
   next(); // Remove manual session.save() here
 });
 
-
-const { doubleCsrfProtection, generateToken } = doubleCsrf({
-  getSecret: (req) => req.session.csrfSecret || '',
-  cookieName: 'csrf-token',
-  size: 64,
-  cookieOptions: {
-    httpOnly: false,
-    sameSite: 'lax',
-    secure: isProduction, // Only secure in production
-    path: '/'
-  },
-  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
-  getTokenFromRequest: (req) => req.body._csrf || req.headers['x-csrf-token']
-});
+function ensureCsrfToken(req, res, next) {
+  res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
+  next();
+}
 
 
-
-// ✅ Middleware to set res.locals.csrfToken and cookie
-// Update your token generation middleware
+// ✅ Single CSRF Token Generation Middleware
 app.use((req, res, next) => {
   try {
     if (req.session.csrfSecret) {
       const token = generateToken(req, res);
       logger.debug(`[CSRF] Generated token: ${token}`);
-      // Set cookie with proper attributes
+      
+      // Set cookie with safe attributes
       res.cookie('csrf-token', token, {
-        httpOnly: false,
+        httpOnly: false, // Allow JS access for form fallback
         sameSite: 'lax',
-        secure: isProduction, // Only secure in production
+        secure: isProduction,
         path: '/',
         maxAge: 1000 * 60 * 15 // 15 minutes
       });
+
       res.locals.csrfToken = token;
     } else {
       logger.warn('[CSRF] No csrfSecret in session!');
@@ -175,9 +211,28 @@ app.use((req, res, next) => {
 // Serve static files from "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Generate CSP nonce for each request
+app.use((req, res, next) => {
+  // Generate a base64-encoded random value for CSP nonce
+  const nonce = Buffer.from(crypto.randomBytes(16)).toString('base64');
+  res.locals.cspNonce = nonce;
+  next();
+});
 
 logger.info('NODE_ENV:', process.env.NODE_ENV);
 
+function validateRequest(req, res, next) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+  next();
+}
+
+function ensureCsrfToken(req, res, next) {
+  res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
+  next();
+}
 
 const BCRYPT_COST = Math.min(
   Math.max(parseInt(process.env.BCRYPT_COST) || 8, 8),
@@ -286,22 +341,36 @@ function sanitizeHeader(str) {
   return str.replace(/[\r\n]/g, '');
 }
 
-// ✅ Basic Auth Middleware
+// ✅ Secure Basic Auth Middleware
 const requireAuth = (req, res, next) => {
   const auth = req.headers.authorization;
+
   if (!auth || !auth.startsWith('Basic ')) {
-    res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
-    return res.status(401).send('Authentication required.');
+    return res.status(401)
+      .set('WWW-Authenticate', 'Basic realm="Dashboard"')
+      .send('Authentication required.');
   }
+
   const base64Credentials = auth.split(' ')[1];
-  const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+
+  let credentials;
+  try {
+    credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+  } catch (e) {
+    return res.status(400).send('Invalid authorization format.');
+  }
+
   const [username, password] = credentials.split(':');
-  if (
-    username === process.env.DASHBOARD_USER &&
-    password === process.env.DASHBOARD_PASS
-  ) return next();
-  res.set('WWW-Authenticate', 'Basic realm="Dashboard"');
-  return res.status(401).send('Access denied');
+
+  if (!username || !password) {
+    return res.status(400).send('Missing username or password.');
+  }
+
+  if (username === process.env.DASHBOARD_USER && password === process.env.DASHBOARD_PASS) {
+    return next();
+  }
+
+  return res.status(401).send('Access denied.');
 };
 
 // ✅ Helper: Fetch name of staff or project
@@ -370,30 +439,12 @@ async function initializeDatabase() {
 }
 
 
-app.get('/', (req, res, next) => {
-  logger.debug('[ROUTE /] --- TOP OF ROUTE ---');
-  logger.debug('[ROUTE /] Request cookies:', req.cookies);
-  logger.debug('[ROUTE /] Session ID:', req.sessionID);
-  logger.debug('[ROUTE /] Session:', req.session);
-  logger.debug('[ROUTE /] res.locals.csrfToken:', res.locals.csrfToken);
-  if (typeof req.csrfToken === 'function') {
-    try {
-      logger.debug('[ROUTE /] req.csrfToken():', req.csrfToken());
-    } catch (err) {
-      logger.warn('[ROUTE /] req.csrfToken() error:', err.message);
-    }
-  }
-  try {
-    logger.debug('[ROUTE /] About to render donation-form EJS');
-    res.render('donation-form', {
-      cspNonce: res.locals.cspNonce,
-      csrfToken: res.locals.csrfToken // Pass CSRF token to template
-    });
-    logger.debug('[ROUTE /] donation-form EJS render call completed');
-  } catch (err) {
-    logger.error('[ROUTE /] Render error:', err);
-    next(err);
-  }
+app.get('/', ensureCsrfToken, (req, res, next) => {
+  logger.debug('[ROUTE /] About to render donation-form EJS');
+  res.render('donation-form', {
+    cspNonce: res.locals.cspNonce,
+    csrfToken: res.locals.csrfToken
+  });
 });
 
 
@@ -1301,7 +1352,7 @@ app.get('/login', ensureCsrfToken, (req, res) => {
   res.render('login', {
     csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce,
-    error: req.query.error
+    error: req.query.error || null
   });
 });
 
@@ -1385,6 +1436,48 @@ app.get('/forgot-password', (req, res) => {
   res.render('forgot-password', { csrfToken, cspNonce });
 });
 
+// ✅ Forgot Password Route - POST
+app.post('/forgot-password', [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
+], validateRequest, async (req, res, next) => {
+  const { email } = req.body;
+  try {
+    const normalizedEmail = email.toLowerCase();
+    const account = await db('staff_accounts').where('email', normalizedEmail).first();
+
+    if (account) {
+      const token = jwt.sign({ id: account.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${token}`;
+
+      if (process.env.SENDGRID_API_KEY) {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+        await sgMail.send({
+          to: normalizedEmail,
+          from: { name: 'Harvest Call Support', email: 'support@harvestcallafrica.org' },
+          subject: 'Password Reset Instructions',
+          html: `...your-html-here...`
+        });
+      }
+
+      logger.info(`Password reset link for ${normalizedEmail}: ${resetLink}`);
+    }
+
+    // Always show success message regardless of account existence
+    res.send(`
+      <html>
+        <body style="text-align:center; padding:40px;">
+          <h2>Password Reset Request Received</h2>
+          <p>If an account exists for <strong>${normalizedEmail}</strong>, you'll receive instructions shortly.</p>
+          <a href="/login" class="btn">Return to Login</a>
+        </body>
+      </html>
+    `);
+
+  } catch (err) {
+    logger.error('Password reset request error:', err);
+    next(new DatabaseError('Failed to process password reset request'));
+  }
+});
 
 // ✅ Password Reset Form - Added for token-based password reset
 app.get('/reset-password', (req, res) => {
@@ -1406,229 +1499,59 @@ app.get('/reset-password', (req, res) => {
 
 
 
-app.get('/change-password', async (req, res, next) => {
-  try {
-    const force = req.query.force === 'true';
-    const token = res.locals.csrfToken;
-    const form = `
-      <html>
-        <head>
-          <title>Change Password</title>
-          <style>
-            body { font-family: Arial; padding: 30px; background: #f9f9f9; }
-            form { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            input, button { display: block; width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-            button { background: #003366; color: white; font-weight: bold; cursor: pointer; }
-            h2 { color: #003366; }
-          </style>
-        </head>
-        <body>
-          <h2>${force ? 'Please change your password before proceeding' : 'Change Password'}</h2>
-          <form method="POST" action="/change-password">
-            <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
-            <input type="password" name="old_password" placeholder="Current Password" required />
-            <input type="password" name="new_password" placeholder="New Password" required />
-            <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
-            <button type="submit">Update Password</button>
-          </form>
-        </body>
-      </html>
-    `;
-    res.send(form);
-  } catch (err) {
-    next(err);
-  }
+// ✅ Change Password - GET
+app.get('/change-password', requireStaffAuth, ensureCsrfToken, (req, res) => {
+  const token = res.locals.csrfToken;
+  const form = `
+    <form method="POST" action="/change-password">
+      <input type="hidden" name="_csrf" value="<%- csrfToken %>">
+      <input type="password" name="old_password" placeholder="Current Password" required />
+      <input type="password" name="new_password" placeholder="New Password" required />
+      <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
+      <button type="submit">Update Password</button>
+    </form>
+  `;
+  res.send(form);
 });
 
-
-
-app.post('/change-password', async (req, res, next) => {
-  const { old_password, new_password, confirm_password } = req.body;
-  
-  if (!req.session.staffId) {
-    return res.status(401).json({ 
-      error: { name: 'Unauthorized', message: 'Unauthorized' } 
-    });
-  }
+// ✅ Change Password - POST
+app.post('/change-password', requireStaffAuth, [
+  body('old_password').notEmpty().withMessage('Current password is required'),
+  body('new_password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('confirm_password').custom((value, { req }) => {
+    if (value !== req.body.new_password) throw new Error('Passwords do not match');
+    return true;
+  })
+], validateRequest, async (req, res, next) => {
+  const { old_password, new_password } = req.body;
+  const staffId = req.session.staffId;
 
   try {
-    const account = await db('staff_accounts')
-      .where('staff_id', req.session.staffId)
-      .first();
-
-    if (!account) {
-      return res.status(404).json({ 
-        error: { name: 'NotFoundError', message: 'Account not found.' } 
-      });
-    }
-
-    if (new_password !== confirm_password) {
-      return res.status(400).json({ 
-        error: { name: 'ValidationError', message: 'New passwords do not match.' } 
-      });
-    }
-
+    const account = await db('staff_accounts').where('staff_id', staffId).first();
     const isMatch = await bcrypt.compare(old_password, account.password_hash);
+
     if (!isMatch) {
-      return res.status(400).json({ 
-        error: { name: 'ValidationError', message: 'Current password is incorrect.' } 
-      });
+      return res.status(400).json({ error: 'Current password is incorrect.' });
     }
 
-    const newHash = await new Promise((resolve, reject) => {
-  bcrypt.hash(new_password, BCRYPT_COST, (err, hash) => {
-    if (err) reject(new DatabaseError('Password hashing failed'));
-    resolve(hash);
-  });
-});
+    const hash = await bcrypt.hash(new_password, BCRYPT_COST);
     await db('staff_accounts')
-      .where('staff_id', req.session.staffId)
-      .update({
-        password_hash: newHash,
-        updated_at: new Date().toISOString()
-      });
+      .where('staff_id', staffId)
+      .update({ password_hash: hash, updated_at: new Date().toISOString() });
 
     req.session.regenerate((err) => {
-      if (err) {
-        return next(new AppError('Could not reset session after password change.', 500));
-      }
-      req.session.accountId = account.id;
+      if (err) return next(new AppError('Session regeneration failed.', 500));
       req.session.staffId = account.staff_id;
+      req.session.accountId = account.id;
       res.redirect('/staff-dashboard');
     });
-  } catch (err) {
-    next(new DatabaseError('Password change failed'));
-  }
 
+  } catch (err) {
+    next(new DatabaseError('Password change failed.'));
+  }
 });
 
-// Password reset request endpoint
-app.post('/request-password-reset', 
-  [body('email').isEmail().normalizeEmail().withMessage('Valid email is required')],
-  validateRequest,
-  async (req, res, next) => {
-    const { email } = req.body;
-    
-    try {
-      const normalizedEmail = email.toLowerCase();
-      const account = await db('staff_accounts')
-        .where('email', normalizedEmail)
-        .first();
 
-      if (account) {
-        const token = jwt.sign({ id: account.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${token}`;
-        
-        // Send actual email in production
-        if (process.env.SENDGRID_API_KEY) {
-          sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-          await sgMail.send({
-            to: normalizedEmail,
-            from: {
-              name: 'Harvest Call Support',
-              email: 'support@harvestcallafrica.org'
-            },
-            subject: 'Password Reset Instructions',
-            html: `
-              <!DOCTYPE html>
-              <html>
-              <head>
-                <style>
-                  body { font-family: Arial, sans-serif; line-height: 1.6; }
-                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                  .header { background: #003366; color: white; padding: 20px; text-align: center; }
-                  .content { padding: 30px; background: #f8f9fa; }
-                  .btn { display: inline-block; padding: 12px 24px; background: #2E7D32; 
-                         color: white; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-                  .footer { text-align: center; color: #6c757d; font-size: 14px; margin-top: 30px; }
-                </style>
-              </head>
-              <body>
-                <div class="container">
-                  <div class="header">
-                    <h2>Password Reset Request</h2>
-                  </div>
-                  <div class="content">
-                    <p>Hello,</p>
-                    <p>We received a request to reset your password for the Harvest Call Ministries staff portal.</p>
-                    <p>Click the button below to reset your password:</p>
-                    <p><a href="${resetLink}" class="btn">Reset Password</a></p>
-                    <p>This link will expire in 1 hour. If you didn't request this, please ignore this email.</p>
-                  </div>
-                  <div class="footer">
-                    <p>Harvest Call Ministries &copy; ${new Date().getFullYear()}</p>
-                  </div>
-                </div>
-              </body>
-              </html>
-            `
-          });
-          logger.info(`📧 Password reset email sent to ${normalizedEmail}`);
-        } else {
-          logger.info(`Password reset link for ${normalizedEmail}: ${resetLink}`);
-        }
-      }
-      
-      // Always show success message regardless of account existence
-      res.send(`
-        <html>
-        <head>
-          <title>Reset Request Sent</title>
-          <style>
-            body { 
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-              background: #f8f9fa; 
-              padding: 40px;
-              text-align: center;
-            }
-            .card {
-              background: white;
-              max-width: 500px;
-              margin: 0 auto;
-              padding: 30px;
-              border-radius: 10px;
-              box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            }
-            h2 { color: #2E7D32; }
-            p { color: #333; line-height: 1.6; }
-            .btn {
-              display: inline-block;
-              margin-top: 20px;
-              padding: 12px 24px;
-              background: #003366;
-              color: white;
-              text-decoration: none;
-              border-radius: 6px;
-              font-weight: 500;
-            }
-            .info {
-              background: #e8f5e9;
-              padding: 15px;
-              border-radius: 8px;
-              margin: 20px 0;
-              border-left: 4px solid #2E7D32;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h2>Reset Request Received</h2>
-            <div class="info">
-              <p>If an account exists for <strong>${escapeHtml(email)}</strong>, 
-              you'll receive password reset instructions shortly.</p>
-            </div>
-            <p>Please check your email and follow the link to set a new password.</p>
-            <a href="/login" class="btn">Return to Login</a>
-          </div>
-        </body>
-        </html>
-      `);
-    } catch (err) {
-      logger.error('Password reset request error:', err);
-      next(new DatabaseError('Failed to process password reset request'));
-    }
-  }
-);
 
 // ✅ Password Reset Form - Added for token-based password reset
 app.get('/reset-password', (req, res) => {
@@ -1720,7 +1643,7 @@ const requireStaffAuth = (req, res, next) => {
 };
 
 
-// Password reset handler
+// Staff Dashboard Route
 app.get('/staff-dashboard', requireStaffAuth, async (req, res, next) => {
   try {
     const staffId = req.session.staffId;

@@ -89,7 +89,7 @@
 
     <!-- Add form novalidate to prevent browser validation -->
 <form action="/login" method="POST" novalidate>
-  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <input type="hidden" name="_csrf" value="<%- csrfToken %>">
   
   <!-- Add autocomplete attributes -->
   <input type="email" name="email" id="email" 
@@ -102,7 +102,7 @@
 </form>
 
 <!-- Add script to ensure token is properly set -->
-<script nonce="<%= cspNonce %>">
+<script nonce="<%- cspNonce %>">
   document.addEventListener('DOMContentLoaded', () => {
     // Verify token is present in form
     const csrfInput = document.querySelector('input[name="_csrf"]');
