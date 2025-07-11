@@ -53,36 +53,30 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   // First, apply CSP and other headers
   helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: [
-          "'self'",
-          `'nonce-${res.locals.cspNonce}'`, // Allow inline styles with valid nonce
-          "https://fonts.googleapis.com ",
-          "https://cdnjs.cloudflare.com "
-        ],
-        scriptSrc: [
-          "'self'",
-          `'nonce-${res.locals.cspNonce}'`, // Allow inline scripts with valid nonce
-          "https://cdnjs.cloudflare.com "  // External JS like Font Awesome
-        ],
-        fontSrc: [
-          "'self'",
-          "https://fonts.gstatic.com ",
-          "https://cdnjs.cloudflare.com "
-        ],
-        imgSrc: [
-          "'self'",
-          "data:"
-        ],
-        connectSrc: [
-          "'self'",
-          "https://api.paystack.co "
-        ]
-      }
-    },
-    crossOriginEmbedderPolicy: false
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: [
+        "'self'",
+        `'nonce-${res.locals.cspNonce}'`,
+        "https://fonts.googleapis.com",
+        "https://cdnjs.cloudflare.com"
+      ],
+      scriptSrc: [
+        "'self'",
+        `'nonce-${res.locals.cspNonce}'`,
+        "https://cdnjs.cloudflare.com"
+      ],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com",
+        "https://cdnjs.cloudflare.com"
+      ],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "https://api.paystack.co"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
   })(req, res, () => {
     // Then run CSRF protection with logging
     doubleCsrfProtection(req, res, (err) => {
