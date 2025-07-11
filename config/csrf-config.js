@@ -1,5 +1,4 @@
 // config/csrf-config.js
-
 const isProduction = process.env.NODE_ENV === 'production';
 
 const csrfCookieName = isProduction
@@ -8,18 +7,17 @@ const csrfCookieName = isProduction
 
 const options = {
   getSecret: (req) => req.session.csrfSecret,
-  storeSecret: (req, secret) => {
-    req.session.csrfSecret = secret;
-  },
+  getSessionIdentifier: (req) => req.sessionID, // ✅ Required by csrf-csrf
   cookieName: csrfCookieName,
   cookieOptions: {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'lax', // ✅ Better UX for most form-based apps
     secure: isProduction,
     path: '/', // required for __Host- prefix
   },
   size: 64,
-  ignoredMethods: ['GET', 'HEAD', 'OPTIONS']
+  getTokenFromRequest: (req) => req.body._csrf, // ✅ Needed for form POSTs
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'] // ✅ Optional but safe to include
 };
 
 module.exports = {

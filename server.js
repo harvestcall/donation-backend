@@ -77,7 +77,17 @@ app.use((req, res, next) => {
   })(req, res, next);
 });
 
-const { doubleCsrfProtection } = doubleCsrf(options);
+// Add getSessionIdentifier to options
+const finalOptions = {
+  ...options,
+  getSessionIdentifier: (req) => req.sessionID
+};
+
+// Apply after session middleware
+app.use(session({ /* your session config */ }));
+
+
+
 
 // ✅ CORS Configuration - Added per security recommendation
 app.use(cors({ 
@@ -117,50 +127,30 @@ app.use(session({
   }
 }));
 
-// Simplify CSRF secret initialization
-app.use((req, res, next) => {
-  if (!req.session.csrfSecret) {
-    req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
-  }
-  next(); // Remove manual session.save() here
+const { doubleCsrfProtection } = doubleCsrf({
+  ...options,
+  getSessionIdentifier: (req) => req.sessionID
 });
 
+app.use(doubleCsrfProtection);
 
-
-
-// ✅ Single CSRF Token Generation Middleware
 app.use((req, res, next) => {
   try {
-    if (req.session.csrfSecret) {
-      const token = generateToken(req, res);
-      logger.debug(`[CSRF] Generated token: ${token}`);
-      
-      // Set cookie with safe attributes
-      res.cookie('csrf-token', token, {
-        httpOnly: false, // Allow JS access for form fallback
-        sameSite: 'lax',
-        secure: isProduction,
-        path: '/',
-        maxAge: 1000 * 60 * 15 // 15 minutes
-      });
-
-      res.locals.csrfToken = token;
-    } else {
-      logger.warn('[CSRF] No csrfSecret in session!');
-    }
+    res.locals.csrfToken = req.csrfToken();
+    res.cookie(csrfCookieName, res.locals.csrfToken, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: isProduction,
+      path: '/',
+      maxAge: 15 * 60 * 1000
+    });
+    next();
   } catch (err) {
-    logger.warn('⚠️ CSRF token generation warning:', err.message);
+    logger.error('CSRF token error:', err.message);
+    next(err);
   }
-  next();
 });
 
-
-// CSRF only applies after login page renders
-app.use((req, res, next) => {
-  const safePaths = ['/login', '/forgot-password', '/reset-password'];
-  if (safePaths.includes(req.path) && req.method === 'GET') return next();
-  return doubleCsrfProtection(req, res, next);
-});
 
 // Serve static files from "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -172,6 +162,7 @@ app.use((req, res, next) => {
   res.locals.cspNonce = nonce;
   next();
 });
+
 
 logger.info('NODE_ENV:', process.env.NODE_ENV);
 
@@ -258,12 +249,6 @@ const verifyPaystackWebhook = (req, res, next) => {
   }
   res.status(401).send('Unauthorized');
 };
-
-const ensureCsrfToken = (req, res, next) => {
-  res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
-  next();
-};
-
 
 function escapeHtml(str) {
   if (typeof str !== 'string') return str;
@@ -384,7 +369,7 @@ async function initializeDatabase() {
 }
 
 
-app.get('/', ensureCsrfToken, (req, res, next) => {
+app.get('/', (req, res, next) => {
   logger.debug('[ROUTE /] About to render donation-form EJS');
   res.render('donation-form', {
     cspNonce: res.locals.cspNonce,
@@ -1287,7 +1272,7 @@ const assignments = selectedProjects.map(pid => ({
 
 
 // ✅ Login form route (GET) -- ensure CSRF token is generated
-app.get('/login', ensureCsrfToken, (req, res) => {
+app.get('/login', (req, res) => {
   res.render('login', {
     csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce,
@@ -1445,11 +1430,11 @@ const requireStaffAuth = (req, res, next) => {
 };
 
 // ✅ Change Password - GET
-app.get('/change-password', requireStaffAuth, ensureCsrfToken, (req, res) => {
+app.get('/change-password', requireStaffAuth, (req, res) => {
   const token = res.locals.csrfToken;
   const form = `
     <form method="POST" action="/change-password">
-      <input type="hidden" name="_csrf" value="<%- csrfToken %>">
+      <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
       <input type="password" name="old_password" placeholder="Current Password" required />
       <input type="password" name="new_password" placeholder="New Password" required />
       <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
@@ -1458,6 +1443,7 @@ app.get('/change-password', requireStaffAuth, ensureCsrfToken, (req, res) => {
   `;
   res.send(form);
 });
+
 
 // ✅ Change Password - POST
 app.post('/change-password', requireStaffAuth, [
