@@ -109,18 +109,18 @@ app.use(cookieParser());
 
 // MISSING: Session middleware configuration
 app.use(session({
-  name: '__Host-hc-session', // Correct placement for session cookie name
-  store: new pgSession({ 
-    pool: pgPool, 
+  name: '__Host-hc-session',
+  store: new pgSession({
+    pool: pgPool,
     tableName: 'session',
-    createTableIfMissing: true // ✅ Ensure session table exists
+    createTableIfMissing: true
   }),
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
   resave: false,
   saveUninitialized: false,
   cookie: {
     path: '/',
-    secure: isProduction, // Only secure in production
+    secure: isProduction,
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000
