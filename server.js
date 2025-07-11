@@ -27,7 +27,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
-
+const doubleCsrfProtection = doubleCsrf(options);
 
 const app = express();
 
