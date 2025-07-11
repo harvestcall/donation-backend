@@ -167,10 +167,10 @@ app.use((req, res, next) => {
   next(); // Remove manual session.save() here
 });
 
-function ensureCsrfToken(req, res, next) {
+const ensureCsrfToken = (req, res, next) => {
   res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
   next();
-}
+};
 
 
 // ✅ Single CSRF Token Generation Middleware
@@ -229,10 +229,6 @@ function validateRequest(req, res, next) {
   next();
 }
 
-function ensureCsrfToken(req, res, next) {
-  res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
-  next();
-}
 
 const BCRYPT_COST = Math.min(
   Math.max(parseInt(process.env.BCRYPT_COST) || 8, 8),
@@ -1325,12 +1321,6 @@ const assignments = selectedProjects.map(pid => ({
 }
 });
 
-
-// Force CSRF token generation
-const ensureCsrfToken = (req, res, next) => {
-  res.locals.csrfToken = req.csrfToken?.() || '';
-  next();
-};
 
 // ✅ Login form route (GET) -- ensure CSRF token is generated
 app.get('/login', ensureCsrfToken, (req, res) => {
