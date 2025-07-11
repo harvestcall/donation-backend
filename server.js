@@ -296,21 +296,6 @@ const loginLimiter = rateLimit({
   message: 'Too many login attempts, please try again later'
 });
 
-// ✅ Validation middleware
-const validateRequest = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: {
-        name: 'ValidationError',
-        message: 'Validation failed',
-        details: errors.array()
-      }
-    });
-  }
-  next();
-};
-
 // ✅ Paystack webhook verification
 const verifyPaystackWebhook = (req, res, next) => {
   // Use raw body instead of JSON.stringify(req.body)
