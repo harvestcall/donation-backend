@@ -49,22 +49,19 @@ app.use((req, res, next) => {
 });
 
   // ✅ Helmet is now applied *after* nonce is set, and per request
-  // ✅ Enhanced CSP + CSRF protection with detailed logging
-app.use((req, res, next) => {
-  // First, apply CSP and other headers
-  helmet({
+app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: [
         "'self'",
-        `'nonce-${res.locals.cspNonce}'`,
+        (req, res) => `'nonce-${res.locals.cspNonce}'`,
         "https://fonts.googleapis.com",
         "https://cdnjs.cloudflare.com"
       ],
       scriptSrc: [
         "'self'",
-        `'nonce-${res.locals.cspNonce}'`,
+        (req, res) => `'nonce-${res.locals.cspNonce}'`,
         "https://cdnjs.cloudflare.com"
       ],
       fontSrc: [
@@ -77,42 +74,9 @@ app.use((req, res, next) => {
     }
   },
   crossOriginEmbedderPolicy: false
-  })(req, res, () => {
-    // Then run CSRF protection with logging
-    doubleCsrfProtection(req, res, (err) => {
-      if (err) {
-        logger.warn('[CSRF] Validation failed:', {
-          url: req.url,
-          method: req.method,
-          csrfCookie: req.cookies['csrf-token'] ? 'present' : 'missing',
-          csrfBody: req.body._csrf ? 'present' : 'missing',
-          csrfSessionSecret: req.session.csrfSecret ? 'present' : 'missing',
-          error: err.message
-        });
+}));
 
-        // Optional: Add debug headers for dev environments
-        if (process.env.NODE_ENV !== 'production') {
-          res.setHeader('X-Debug-CSRF', JSON.stringify({
-            cookie: req.cookies['csrf-token'],
-            body: req.body._csrf,
-            secret: req.session.csrfSecret,
-            error: err.message
-          }));
-        }
-
-        return res.status(403).json({
-          error: {
-            name: 'ForbiddenError',
-            message: 'Invalid CSRF token. Please refresh and try again.',
-            details: process.env.NODE_ENV === 'development' ? err.message : undefined
-          }
-        });
-      }
-      next();
-    });
-  });
-});
-
+app.use(doubleCsrfProtection);
 
 // ✅ CORS Configuration - Added per security recommendation
 app.use(cors({ 
@@ -396,6 +360,11 @@ class NotFoundError extends AppError {
     super(message || 'Resource not found', 404);
   }
 }
+
+app.get('/csrf-test', doubleCsrfProtection, (req, res) => {
+  res.send(`Your CSRF token is: ${res.locals.csrfToken}`);
+});
+
 
 // Health check endpoint (for Render and debugging)
 app.get('/healthz', (req, res) => {
