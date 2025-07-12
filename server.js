@@ -172,6 +172,12 @@ app.use(doubleCsrfProtection);
 // ✅ Ensure CSRF token is available in locals
 app.use((req, res, next) => {
   try {
+    if (!req.sessionID) {
+      logger.warn('⚠️ No session ID available when generating CSRF token');
+    } else {
+      logger.info(`🔐 Generating CSRF token for session: ${req.sessionID}`);
+    }
+
     if (req.sessionID) {
       const token = generateToken(req, res);
       res.locals.csrfToken = token;
@@ -183,9 +189,12 @@ app.use((req, res, next) => {
         maxAge: 1000 * 60 * 15
       });
     }
+
     next();
   } catch (err) {
-    logger.error('CSRF token error:', err.message);
+    logger.error('❌ Critical CSRF token error:', err.message);
+    logger.debug('Request session:', req.session);
+    logger.debug('Session ID:', req.sessionID);
     next(new AppError('CSRF token generation failed', 500));
   }
 });
