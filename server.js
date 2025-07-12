@@ -23,6 +23,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const DOMPurify = require('dompurify') (require('jsdom').JSDOM('').window);
 const validator = require('validator');
+const { escapeHtml } = require('./utils/helpers');
 
 // ✅ PostgreSQL pool
 const pgPool = new Pool({
@@ -222,14 +223,6 @@ const verifyPaystackWebhook = (req, res, next) => {
   hash === req.headers['x-paystack-signature'] ? next() : res.status(401).send('Unauthorized');
 };
 
-// ✅ Security helpers
-const escapeHtml = str => typeof str === 'string'
-  ? str.replace(/&/g, '&amp;')
-       .replace(/</g, '<')
-       .replace(/>/g, '>')
-       .replace(/"/g, '&quot;')
-       .replace(/'/g, '&#039;')
-  : str;
 
 const sanitizeHeader = str => typeof str === 'string'
   ? str.replace(/[\r\n]/g, '')
@@ -310,16 +303,6 @@ function sanitizeText(input) {
 // Sanitize and normalize emails
 function sanitizeEmail(input) {
   return validator.normalizeEmail(input || '', { gmail_remove_dots: false });
-}
-
-function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, m => ({
-    '&': '&amp;',
-    '<': '<',
-    '>': '>',
-    '"': '&quot;',
-    "'": '&#039;'
-  }[m]));
 }
 
 // ===== ROUTES START HERE ===== //
