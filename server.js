@@ -637,7 +637,6 @@ app.get('/projects', async (req, res, next) => {
 // Admin Summary Dashboard
 app.get('/admin/summary',
   requireAuth,
-  cache('5 minutes'),
   async (req, res, next) => {
     try {
       const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
