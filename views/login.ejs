@@ -15,6 +15,7 @@
       align-items: center;
       height: 100vh;
     }
+
     .login-container {
       background: #fff;
       padding: 2rem 2.5rem;
@@ -23,17 +24,20 @@
       width: 100%;
       max-width: 400px;
     }
+
     h2 {
       margin-bottom: 1.5rem;
       text-align: center;
       color: #003366;
     }
+
     label {
       font-weight: bold;
       display: block;
       margin-bottom: 0.5rem;
       color: #333;
     }
+
     input {
       width: 100%;
       padding: 0.8rem;
@@ -42,6 +46,7 @@
       border: 1px solid #ccc;
       font-size: 1rem;
     }
+
     button {
       width: 100%;
       padding: 0.9rem;
@@ -53,20 +58,33 @@
       cursor: pointer;
       transition: background-color 0.3s ease;
     }
+
     button:hover {
       background-color: #27662a;
     }
+
     .forgot-link {
       text-align: center;
       margin-top: 1rem;
     }
+
     .forgot-link a {
       color: #003366;
       text-decoration: none;
       font-size: 0.95rem;
     }
+
     .forgot-link a:hover {
       text-decoration: underline;
+    }
+
+    .error-message {
+      background: #ffebee;
+      color: #b71c1c;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
     }
   </style>
 </head>
@@ -75,54 +93,24 @@
     <h2>Staff Login</h2>
 
     <% if (typeof error !== 'undefined') { %>
-      <div class="error-message" style="
-        background: #ffebee;
-        color: #b71c1c;
-        padding: 12px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        text-align: center;
-      ">
-        <%= error %>
-      </div>
+      <div class="error-message"><%= error %></div>
     <% } %>
 
-    <!-- Add form novalidate to prevent browser validation -->
-<form action="/login" method="POST" novalidate>
-  <input type="hidden" name="_csrf" value="<%- csrfToken %>">
-  
-  <!-- Add autocomplete attributes -->
-  <input type="email" name="email" id="email" 
-         autocomplete="username" required>
-  
-  <input type="password" name="password" id="password" 
-         autocomplete="current-password" required>
-  
-  <button type="submit">Login</button>
-</form>
+    <form action="/login" method="POST" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
-<!-- Add script to ensure token is properly set -->
-<script nonce="<%- cspNonce %>">
-  document.addEventListener('DOMContentLoaded', () => {
-    // Verify token is present in form
-    const csrfInput = document.querySelector('input[name="_csrf"]');
-    if (!csrfInput || !csrfInput.value) {
-      console.error('CSRF token missing in form!');
-      
-      // Attempt to recover from cookie
-      const cookieToken = document.cookie.match(/(?:csrf-token=)([^;]*)/);
-      if (cookieToken && cookieToken[1]) {
-        if (!csrfInput) {
-          const form = document.querySelector('form');
-          const hiddenInput = document.createElement('input');
-          hiddenInput.type = 'hidden';
-          hiddenInput.name = '_csrf';
-          hiddenInput.value = cookieToken[1];
-          form.prepend(hiddenInput);
-        } else {
-          csrfInput.value = cookieToken[1];
-        }
-      }
-    }
-  });
-</script>
+      <label for="email">Email</label>
+      <input type="email" name="email" id="email" autocomplete="username" required />
+
+      <label for="password">Password</label>
+      <input type="password" name="password" id="password" autocomplete="current-password" required />
+
+      <button type="submit">Login</button>
+    </form>
+
+    <div class="forgot-link">
+      <a href="/forgot-password">Forgot your password?</a>
+    </div>
+  </div>
+</body>
+</html>

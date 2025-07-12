@@ -1,767 +1,135 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Partner With Us - Donation</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/donation-form.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Support Harvest Call Ministries</title>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <style nonce="<%= cspNonce %>">
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      background: white;
+      max-width: 500px;
+      width: 90%;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      text-align: center;
+      color: #003366;
+      margin-bottom: 1.5rem;
+    }
+
+    label {
+      display: block;
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 0.75rem;
+      margin-top: 0.25rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+
+    button {
+      background-color: #2E7D32;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #27662a;
+    }
+
+    .error-message {
+      background: #ffebee;
+      color: #b71c1c;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      display: none;
+      text-align: center;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      margin-top: 1rem;
+    }
+
+    .loading i {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-    <div class="donation-container">
-        <div class="donation-header">
-            <h1 class="header-title">Partner With Us</h1>
-            <p class="header-subtitle">Your gift equips and sends African believers into the Lord’s global harvest</p>
-        </div>
-        
-        <div class="donation-section">
-            <!-- Error container -->
-            <div id="error-container"></div>
-            
-            <h2 class="section-title">Make a Donation</h2>
-            
-            <div class="form-section">
-                <h3 class="section-title">
-                    <i class="fas fa-globe-africa"></i> Select Currency
-                </h3>
-                <div class="currency-toggle">
-                    <button class="currency-btn active" data-currency="NGN">Nigerian Naira (₦)</button>
-                    <button class="currency-btn" data-currency="USD">US Dollars ($)</button>
-                </div>
-            </div>
-            
-            <div class="form-section">
-                <h3 class="section-title">
-                    <i class="fas fa-calendar-alt"></i> Donation Type
-                </h3>
-                <div class="donation-type">
-                    <button class="type-btn active" data-type="one-time">One-Time Gift</button>
-                    <button class="type-btn" data-type="monthly">Monthly Support</button>
-                </div>
-            </div>
-            
-            <div class="form-section">
-                <h3 class="section-title">
-                    <i class="fas fa-gift"></i> Select Amount
-                </h3>
-                <div class="amount-options">
-                    <div class="amount-btn" data-amount="10000">
-                        <span class="amount-value">₦10,000</span>
-                        <span class="amount-label">Equips 1 believer</span>
-                    </div>
-                    <div class="amount-btn" data-amount="20000">
-                        <span class="amount-value">₦20,000</span>
-                        <span class="amount-label">Trains a family</span>
-                    </div>
-                    <div class="amount-btn" data-amount="30000">
-                        <span class="amount-value">₦30,000</span>
-                        <span class="amount-label">Supports a leader</span>
-                    </div>
-                    <div class="amount-btn" data-amount="40000">
-                        <span class="amount-value">₦40,000</span>
-                        <span class="amount-label">Produces resources</span>
-                    </div>
-                    <div class="amount-btn" data-amount="50000">
-                        <span class="amount-value">₦50,000</span>
-                        <span class="amount-label">Mobilizes leaders</span>
-                    </div>
-                    <div class="amount-btn" data-amount="100000">
-                        <span class="amount-value">₦100,000</span>
-                        <span class="amount-label">Sends missionaries</span>
-                    </div>
-                    
-                    <!-- USD amounts initially hidden with CSS -->
-                    <div class="amount-btn usd-amount" data-amount="25" style="display: none;">
-                        <span class="amount-value">$25</span>
-                        <span class="amount-label">Equips 1 believer</span>
-                    </div>
-                    <div class="amount-btn usd-amount" data-amount="50" style="display: none;">
-                        <span class="amount-value">$50</span>
-                        <span class="amount-label">Trains a family</span>
-                    </div>
-                    <div class="amount-btn usd-amount" data-amount="75" style="display: none;">
-                        <span class="amount-value">$75</span>
-                        <span class="amount-label">Supports a leader</span>
-                    </div>
-                    <div class="amount-btn usd-amount" data-amount="100" style="display: none;">
-                        <span class="amount-value">$100</span>
-                        <span class="amount-label">Produces resources</span>
-                    </div>
-                    <div class="amount-btn usd-amount" data-amount="150" style="display: none;">
-                        <span class="amount-value">$150</span>
-                        <span class="amount-label">Mobilizes leaders</span>
-                    </div>
-                    <div class="amount-btn usd-amount" data-amount="200" style="display: none;">
-                        <span class="amount-value">$200</span>
-                        <span class="amount-label">Sends missionaries</span>
-                    </div>
-                </div>
-                
-                <div class="custom-amount">
-                    <h3 class="section-title">
-                        <i class="fas fa-edit"></i> Custom Amount
-                    </h3>
-                    <div class="custom-input-container">
-                        <div class="currency-symbol" id="currency-symbol">₦</div>
-                        <input type="number" id="custom-amount-input" placeholder="Enter other amount">
-                    </div>
-                </div>
-            </div>
-            
-            <div class="allocation-section">
-                <div class="allocation-header">
-                    <h3 class="allocation-title">
-                        <i class="fas fa-hand-holding-heart"></i> Allocate Your Donation
-                    </h3>
-                    <div class="allocation-toggle">
-                        <button class="allocation-btn active" data-type="staff">Staff Support</button>
-                        <button class="allocation-btn" data-type="projects">Projects</button>
-                    </div>
-                </div>
-                
-                <div class="custom-dropdown" id="allocation-dropdown">
-                    <div class="dropdown-header">
-                        <input type="text" class="dropdown-search" id="allocation-search" placeholder="Search staff or projects...">
-                        <div class="dropdown-icon">
-                            <i class="fas fa-search"></i>
-                        </div>
-                    </div>
-                    <div class="dropdown-list" id="allocation-list">
-                    </div>
-                </div>
-            </div>
-            
-            <form id="donation-form">
-                <!-- CSRF Token -->
-                <input type="hidden" id="csrf-token" name="_csrf" value="<%- csrfToken %>">
-                
-                <div class="donor-info">
-                    <h3 class="donor-section-title">Your Information</h3>
-                    
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label for="full-name">Full Name</label>
-                            <input type="text" id="full-name" placeholder="First and Last Name" required>
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="email">Email Address</label>
-                            <input type="email" id="email" placeholder="your.email@example.com" required>
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="phone">Phone Number</label>
-                            <input type="tel" id="phone" placeholder="+234 XXX XXX XXXX" required>
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="country">Country</label>
-                            <select id="country">
-                                <option value="">Select Country</option>
-                                <option value="Nigeria" selected>Nigeria</option>
-                                <option value="United States">United States</option>
-                                <option value="United Kingdom">United Kingdom</option>
-                                <option value="Canada">Canada</option>
-                                <option disabled>──────────</option>
-                                <option value="Afghanistan">Afghanistan</option>
-                                <option value="Albania">Albania</option>
-                                <option value="Algeria">Algeria</option>
-                                <option value="Andorra">Andorra</option>
-                                <option value="Angola">Angola</option>
-                                <option value="Antigua and Barbuda">Antigua and Barbuda</option>
-                                <option value="Argentina">Argentina</option>
-                                <option value="Armenia">Armenia</option>
-                                <option value="Australia">Australia</option>
-                                <option value="Austria">Austria</option>
-                                <option value="Azerbaijan">Azerbaijan</option>
-                                <option value="Bahamas">Bahamas</option>
-                                <option value="Bahrain">Bahrain</option>
-                                <option value="Bangladesh">Bangladesh</option>
-                                <option value="Barbados">Barbados</option>
-                                <option value="Belarus">Belarus</option>
-                                <option value="Belgium">Belgium</option>
-                                <option value="Belize">Belize</option>
-                                <option value="Benin">Benin</option>
-                                <option value="Bhutan">Bhutan</option>
-                                <option value="Bolivia">Bolivia</option>
-                                <option value="Bosnia and Herzegovina">Bosnia and Herzegovina</option>
-                                <option value="Botswana">Botswana</option>
-                                <option value="Brazil">Brazil</option>
-                                <option value="Brunei">Brunei</option>
-                                <option value="Bulgaria">Bulgaria</option>
-                                <option value="Burkina Faso">Burkina Faso</option>
-                                <option value="Burundi">Burundi</option>
-                                <option value="Cabo Verde">Cabo Verde</option>
-                                <option value="Cambodia">Cambodia</option>
-                                <option value="Cameroon">Cameroon</option>
-                                <option value="Central African Republic">Central African Republic</option>
-                                <option value="Chad">Chad</option>
-                                <option value="Chile">Chile</option>
-                                <option value="China">China</option>
-                                <option value="Colombia">Colombia</option>
-                                <option value="Comoros">Comoros</option>
-                                <option value="Congo">Congo</option>
-                                <option value="Costa Rica">Costa Rica</option>
-                                <option value="Croatia">Croatia</option>
-                                <option value="Cuba">Cuba</option>
-                                <option value="Cyprus">Cyprus</option>
-                                <option value="Czechia">Czechia</option>
-                                <option value="Denmark">Denmark</option>
-<option value="Djibouti">Djibouti</option>
-<option value="Dominica">Dominica</option>
-<option value="Dominican Republic">Dominican Republic</option>
-<option value="Ecuador">Ecuador</option>
-<option value="Egypt">Egypt</option>
-<option value="El Salvador">El Salvador</option>
-<option value="Equatorial Guinea">Equatorial Guinea</option>
-<option value="Eritrea">Eritrea</option>
-<option value="Estonia">Estonia</option>
-<option value="Eswatini">Eswatini</option>
-<option value="Ethiopia">Ethiopia</option>
-<option value="Fiji">Fiji</option>
-<option value="Finland">Finland</option>
-<option value="France">France</option>
-<option value="Gabon">Gabon</option>
-<option value="Gambia">Gambia</option>
-<option value="Georgia">Georgia</option>
-<option value="Germany">Germany</option>
-<option value="Ghana">Ghana</option>
-<option value="Greece">Greece</option>
-<option value="Grenada">Grenada</option>
-<option value="Guatemala">Guatemala</option>
-<option value="Guinea">Guinea</option>
-<option value="Guinea-Bissau">Guinea-Bissau</option>
-<option value="Guyana">Guyana</option>
-<option value="Haiti">Haiti</option>
-<option value="Honduras">Honduras</option>
-<option value="Hungary">Hungary</option>
-<option value="Iceland">Iceland</option>
-<option value="India">India</option>
-<option value="Indonesia">Indonesia</option>
-<option value="Iran">Iran</option>
-<option value="Iraq">Iraq</option>
-<option value="Ireland">Ireland</option>
-<option value="Israel">Israel</option>
-<option value="Italy">Italy</option>
-<option value="Jamaica">Jamaica</option>
-<option value="Japan">Japan</option>
-<option value="Jordan">Jordan</option>
-<option value="Kazakhstan">Kazakhstan</option>
-<option value="Kenya">Kenya</option>
-<option value="Kiribati">Kiribati</option>
-<option value="Kuwait">Kuwait</option>
-<option value="Kyrgyzstan">Kyrgyzstan</option>
-<option value="Laos">Laos</option>
-<option value="Latvia">Latvia</option>
-<option value="Lebanon">Lebanon</option>
-<option value="Lesotho">Lesotho</option>
-<option value="Liberia">Liberia</option>
-<option value="Libya">Libya</option>
-<option value="Liechtenstein">Liechtenstein</option>
-<option value="Lithuania">Lithuania</option>
-<option value="Luxembourg">Luxembourg</option>
-<option value="Madagascar">Madagascar</option>
-<option value="Malawi">Malawi</option>
-<option value="Malaysia">Malaysia</option>
-<option value="Maldives">Maldives</option>
-<option value="Mali">Mali</option>
-<option value="Malta">Malta</option>
-<option value="Marshall Islands">Marshall Islands</option>
-<option value="Mauritania">Mauritania</option>
-<option value="Mauritius">Mauritius</option>
-<option value="Mexico">Mexico</option>
-<option value="Micronesia">Micronesia</option>
-<option value="Moldova">Moldova</option>
-<option value="Monaco">Monaco</option>
-<option value="Mongolia">Mongolia</option>
-<option value="Montenegro">Montenegro</option>
-<option value="Morocco">Morocco</option>
-<option value="Mozambique">Mozambique</option>
-<option value="Myanmar">Myanmar</option>
-<option value="Namibia">Namibia</option>
-<option value="Nauru">Nauru</option>
-<option value="Nepal">Nepal</option>
-<option value="Netherlands">Netherlands</option>
-<option value="New Zealand">New Zealand</option>
-<option value="Nicaragua">Nicaragua</option>
-<option value="Niger">Niger</option>
-<option value="North Korea">North Korea</option>
-<option value="North Macedonia">North Macedonia</option>
-<option value="Norway">Norway</option>
-<option value="Oman">Oman</option>
-<option value="Pakistan">Pakistan</option>
-<option value="Palau">Palau</option>
-<option value="Panama">Panama</option>
-<option value="Papua New Guinea">Papua New Guinea</option>
-<option value="Paraguay">Paraguay</option>
-<option value="Peru">Peru</option>
-<option value="Philippines">Philippines</option>
-<option value="Poland">Poland</option>
-<option value="Portugal">Portugal</option>
-<option value="Qatar">Qatar</option>
-<option value="Romania">Romania</option>
-<option value="Russia">Russia</option>
-<option value="Rwanda">Rwanda</option>
-<option value="Saint Kitts and Nevis">Saint Kitts and Nevis</option>
-<option value="Saint Lucia">Saint Lucia</option>
-<option value="Saint Vincent and the Grenadines">Saint Vincent and the Grenadines</option>
-<option value="Samoa">Samoa</option>
-<option value="San Marino">San Marino</option>
-<option value="Sao Tome and Principe">Sao Tome and Principe</option>
-<option value="Saudi Arabia">Saudi Arabia</option>
-<option value="Senegal">Senegal</option>
-<option value="Serbia">Serbia</option>
-<option value="Seychelles">Seychelles</option>
-<option value="Sierra Leone">Sierra Leone</option>
-<option value="Singapore">Singapore</option>
-<option value="Slovakia">Slovakia</option>
-<option value="Slovenia">Slovenia</option>
-<option value="Solomon Islands">Solomon Islands</option>
-<option value="Somalia">Somalia</option>
-<option value="South Africa">South Africa</option>
-<option value="South Korea">South Korea</option>
-<option value="South Sudan">South Sudan</option>
-<option value="Spain">Spain</option>
-<option value="Sri Lanka">Sri Lanka</option>
-<option value="Sudan">Sudan</option>
-<option value="Suriname">Suriname</option>
-<option value="Sweden">Sweden</option>
-<option value="Switzerland">Switzerland</option>
-<option value="Syria">Syria</option>
-<option value="Taiwan">Taiwan</option>
-<option value="Tajikistan">Tajikistan</option>
-<option value="Tanzania">Tanzania</option>
-<option value="Thailand">Thailand</option>
-<option value="Timor-Leste">Timor-Leste</option>
-<option value="Togo">Togo</option>
-<option value="Tonga">Tonga</option>
-<option value="Trinidad and Tobago">Trinidad and Tobago</option>
-<option value="Tunisia">Tunisia</option>
-<option value="Turkey">Turkey</option>
-<option value="Turkmenistan">Turkmenistan</option>
-<option value="Tuvalu">Tuvalu</option>
-<option value="Uganda">Uganda</option>
-<option value="Ukraine">Ukraine</option>
-<option value="United Arab Emirates">United Arab Emirates</option>
-<option value="Uruguay">Uruguay</option>
-<option value="Uzbekistan">Uzbekistan</option>
-<option value="Vanuatu">Vanuatu</option>
-<option value="Venezuela">Venezuela</option>
-<option value="Vietnam">Vietnam</option>
-<option value="Yemen">Yemen</option>
-<option value="Zambia">Zambia</option>
-<option value="Zimbabwe">Zimbabwe</option>
-                            </select>
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="address">Street Address</label>
-                            <input type="text" id="address" placeholder="123 Main Street">
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="city">City</label>
-                            <input type="text" id="city" placeholder="City">
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="state">State/Province</label>
-                            <input type="text" id="state" placeholder="State/Province">
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="zip">ZIP/Postal Code</label>
-                            <input type="text" id="zip" placeholder="Postal Code">
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="occupation">Occupation</label>
-                            <input type="text" id="occupation" placeholder="Your profession">
-                        </div>
-                        
-                        <div class="input-group">
-                            <label for="organization">Organization (Optional)</label>
-                            <input type="text" id="organization" placeholder="Company or Church">
-                        </div>
-                    </div>
-                    
-                    <div class="input-group">
-                        <label>
-                            <input type="checkbox" id="newsletter" checked> 
-                            Send me updates about the impact of my donation
-                        </label>
-                    </div>
-                    
-                    <div class="input-group">
-                        <label>
-                            <input type="checkbox" id="tax-receipt"> 
-                            I need a tax-deductible receipt
-                        </label>
-                    </div>
-                    
-                    <div class="input-group">
-                        <label for="message">Message (Optional)</label>
-                        <textarea id="message" placeholder="Add a personal message for the staff member or project" rows="3"></textarea>
-                    </div>
-                    
-                    <button class="donate-button" id="donate-button">
-                        <i class="fas fa-hands-holding"></i> Complete Donation
-                    </button>
-                    
-                    <p class="security-note">
-                        <i class="fas fa-lock"></i> Secure 256-bit SSL encryption · All information is protected
-                    </p>
-                </div>
-            </form>
-        </div>
-        
-        <div class="impact-section">
-            <h2 class="impact-title">Your Impact</h2>
-            <div class="impact-stats">
-                <div class="stat-item">
-                    <div class="stat-value">100%</div>
-                    <div class="stat-label">Towards Our Mission</div>
-                </div>
-            </div>
-            
-            <div class="trust-badges">
-                <div class="badge">
-                    <i class="fas fa-shield-alt"></i>
-                    <span>Secure Payments</span>
-                </div>
-                <div class="badge">
-                    <i class="fas fa-certificate"></i>
-                    <span>Accountable Stewardship</span>
-                </div>
-                <div class="badge">
-                    <i class="fas fa-hand-holding-heart"></i>
-                    <span>Verified Nonprofit</span>
-                </div>
-            </div>
-        </div>
-    </div>
+  <div class="container">
+    <h1>Make a Donation</h1>
 
-    <script nonce="<%= typeof cspNonce !== 'undefined' ? cspNonce : '' %>">
-        let currentAllocationType = 'staff';
-        let selectedAllocation = null;
-        let staffMembers = [];
-        let projects = [];
+    <form id="donationForm" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 
-        const mockStaff = [
-            { id: 1, name: "Chinwe Okonkwo" },
-            { id: 2, name: "Emeka Adebayo" },
-            { id: 3, name: "Amina Mohammed" },
-            { id: 4, name: "Tunde Okafor" }
-        ];
-        
-        const mockProjects = [
-            { id: 101, name: "Clean Water Initiative" },
-            { id: 102, name: "Youth Tech Program" },
-            { id: 103, name: "Reforestation Project" },
-            { id: 104, name: "Mobile Health Clinic" }
-        ];
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required />
 
-        const allocationBtns = document.querySelectorAll('.allocation-btn');
-        const allocationList = document.getElementById('allocation-list');
-        const allocationSearch = document.getElementById('allocation-search');
-        const allocationDropdown = document.getElementById('allocation-dropdown');
-        const errorContainer = document.getElementById('error-container');
+      <label for="name">Full Name</label>
+      <input type="text" id="name" name="name" required />
 
-        // Function to display errors
-        function showError(message) {
-            errorContainer.textContent = message;
-            errorContainer.style.display = 'block';
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+      <label for="phone">Phone Number</label>
+      <input type="tel" id="phone" name="phone" required />
 
-        // Function to get CSRF token
-        function getCsrfToken() {
-            return document.getElementById('csrf-token').value;
-        }
+      <label for="amount">Amount (₦)</label>
+      <input type="number" id="amount" name="amount" placeholder="e.g. 5000" required />
 
-        async function fetchAllocationData() {
-            try {
-                const [staffRes, projectsRes] = await Promise.all([
-                    fetch('/staff'),
-                    fetch('/projects')
-                ]);
+      <label for="donationType">Donation Type</label>
+      <select id="donationType" name="donationType">
+        <option value="one-time">One-Time</option>
+        <option value="recurring">Recurring</option>
+      </select>
 
-                if (!staffRes.ok) throw new Error(`Staff fetch failed: ${staffRes.status}`);
-                if (!projectsRes.ok) throw new Error(`Projects fetch failed: ${projectsRes.status}`);
-                
-                staffMembers = await staffRes.json();
-                projects = await projectsRes.json();
-            } catch (err) {
-                staffMembers = mockStaff;
-                projects = mockProjects;
-            } finally {
-                populateAllocationList(currentAllocationType);
-            }
-        }
+      <label for="purpose">Purpose</label>
+      <select id="purpose" name="purpose">
+        <option value="general">General Support</option>
+        <option value="project">Project Support</option>
+        <option value="staff">Staff Support</option>
+      </select>
 
-        function populateAllocationList(type, searchTerm = '') {
-            if (!allocationList) return;
-            
-            allocationList.innerHTML = '';
-            const items = type === 'staff' ? staffMembers : projects;
-            
-            const filteredItems = items.filter(item => 
-                item.name.toLowerCase().includes((searchTerm || '').toLowerCase())
-            );
-            
-            if (filteredItems.length > 0) {
-                filteredItems.forEach(item => {
-                    const option = document.createElement('div');
-                    option.className = 'dropdown-option';
-                    
-                    if (selectedAllocation && 
-                        selectedAllocation.id === item.id && 
-                        selectedAllocation.type === type) {
-                        option.classList.add('selected');
-                    }
-                    
-                    option.dataset.id = item.id;
-                    option.dataset.type = type;
-                    option.innerHTML = `<strong>${item.name}</strong>`;
-                    
-                    option.addEventListener('click', () => {
-                        document.querySelectorAll('.dropdown-option').forEach(o => 
-                            o.classList.remove('selected')
-                        );
-                        option.classList.add('selected');
-                        selectedAllocation = {
-                            type: type,
-                            id: item.id,
-                            name: item.name
-                        };
-                        allocationSearch.value = item.name;
-                        allocationList.classList.remove('visible');
-                    });
-                    
-                    allocationList.appendChild(option);
-                });
-            } else {
-                const noResults = document.createElement('div');
-                noResults.className = 'no-results';
-                noResults.textContent = 'No matching items found';
-                allocationList.appendChild(noResults);
-            }
-        }
+      <div class="loading" id="loading">
+        <i class="fas fa-spinner"></i> Processing...
+      </div>
 
-        function initAllocation() {
-            if (!allocationBtns.length) return;
-            
-            allocationBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    allocationBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    currentAllocationType = btn.dataset.type;
-                    allocationSearch.placeholder = currentAllocationType === 'staff' 
-                        ? 'Search staff...' 
-                        : 'Search projects...';
-                    allocationSearch.value = '';
-                    populateAllocationList(currentAllocationType);
-                    allocationList.classList.add('visible');
-                });
-            });
-            
-            allocationSearch.addEventListener('input', () => {
-                populateAllocationList(currentAllocationType, allocationSearch.value);
-            });
-            
-            allocationSearch.addEventListener('focus', () => {
-                allocationList.classList.add('visible');
-                populateAllocationList(currentAllocationType, allocationSearch.value);
-            });
-            
-            document.addEventListener('click', e => {
-                if (!allocationDropdown.contains(e.target)) {
-                    allocationList.classList.remove('visible');
-                }
-            });
-        }
+      <button type="submit" id="submitBtn">Donate Now</button>
+    </form>
 
-        function initCurrency() {
-            const currencyBtns = document.querySelectorAll('.currency-btn');
-            const currencySymbol = document.getElementById('currency-symbol');
-            const ngnAmounts = document.querySelectorAll('.amount-btn:not(.usd-amount)');
-            const usdAmounts = document.querySelectorAll('.usd-amount');
-            
-            // Hide USD amounts on initial load
-            usdAmounts.forEach(el => {
-                el.style.display = 'none';
-                el.hidden = true;
-            });
-            
-            // Show NGN amounts on initial load
-            ngnAmounts.forEach(el => {
-                el.style.display = 'flex';
-                el.hidden = false;
-            });
-            
-            currencyBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    currencyBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    const currency = btn.dataset.currency;
-                    
-                    if (currency === 'NGN') {
-                        ngnAmounts.forEach(el => {
-                            el.style.display = 'flex';
-                            el.hidden = false;
-                        });
-                        usdAmounts.forEach(el => {
-                            el.style.display = 'none';
-                            el.hidden = true;
-                        });
-                        currencySymbol.textContent = '₦';
-                    } else {
-                        ngnAmounts.forEach(el => {
-                            el.style.display = 'none';
-                            el.hidden = true;
-                        });
-                        usdAmounts.forEach(el => {
-                            el.style.display = 'flex';
-                            el.hidden = false;
-                        });
-                        currencySymbol.textContent = '$';
-                    }
-                });
-            });
-        }
+    <div class="error-message" id="error-container"></div>
+  </div>
 
-        function initDonationType() {
-            const typeBtns = document.querySelectorAll('.type-btn');
-            
-            typeBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    typeBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                });
-            });
-        }
-
-        function initAmountSelection() {
-            const amountBtns = document.querySelectorAll('.amount-btn');
-            const customAmountInput = document.getElementById('custom-amount-input');
-            
-            amountBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    amountBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    customAmountInput.value = '';
-                });
-            });
-            
-            customAmountInput.addEventListener('focus', () => {
-                amountBtns.forEach(b => b.classList.remove('active'));
-            });
-        }
-
-        function initDonateButton() {
-            const donateButton = document.getElementById('donate-button');
-            
-            document.getElementById('donation-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                errorContainer.style.display = 'none';
-                
-                const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
-                const type = document.querySelector('.type-btn.active')?.dataset.type;
-                const selectedAmountBtn = document.querySelector('.amount-btn.active');
-                const customAmount = document.getElementById('custom-amount-input')?.value;
-                
-                let amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
-                
-                // Validate amount
-                if (!amount || amount <= 0) {
-                    showError('Please select or enter a donation amount');
-                    return;
-                }
-                
-                // Convert to smallest currency unit (kobo/cents)
-                amount = parseInt(amount) * 100;
-                
-                // Validate required fields
-                const name = document.getElementById('full-name')?.value;
-                const email = document.getElementById('email')?.value;
-                const phone = document.getElementById('phone')?.value;
-                
-                if (!name || !email || !phone) {
-                    showError('Please complete all required information fields');
-                    return;
-                }
-                
-                // Validate email format
-                const emailRegex = /^[^\s@]+@[^"]+\.[^\s@]+$/;
-                if (!emailRegex.test(email)) {
-                    showError('Please enter a valid email address');
-                    return;
-                }
-                
-                // Validate phone number
-                const phoneRegex = /^\+?\d{7,15}$/;
-                if (!phoneRegex.test(phone)) {
-                    showError('Please enter a valid phone number (7-15 digits)');
-                    return;
-                }
-                
-                // Prepare metadata
-                const metadata = {
-                    donorName: name,
-                    donationType: type === 'monthly' ? 'recurring' : 'one-time',
-                    phone: phone
-                };
-                
-                // Add allocation if selected
-                if (selectedAllocation) {
-                    if (selectedAllocation.type === 'staff') {
-                        metadata.staffId = String(selectedAllocation.id);
-                    } else if (selectedAllocation.type === 'projects') {
-                        metadata.projectId = String(selectedAllocation.id);
-                    }
-                }
-                
-                // Prepare payload
-                const payload = {
-                    email: email,
-                    amount: amount,
-                    currency: currency,
-                    metadata: metadata
-                };
-                
-                try {
-                    const response = await fetch('/initialize-payment', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': getCsrfToken()
-                        },
-                        credentials: 'same-origin', // Ensure session cookie is sent
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error?.message || 'Payment initialization failed');
-                    }
-                    
-                    const data = await response.json();
-                    window.location.href = data.authorization_url;
-                    
-                } catch (error) {
-                    showError(`Error: ${error.message || 'An error occurred while processing your payment. Please try again.'}`);
-                }
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initCurrency();
-            initDonationType();
-            initAmountSelection();
-            initAllocation();
-            initDonateButton();
-            fetchAllocationData();
-        });
-    </script>
+  <!-- Load external script -->
+  <script nonce="<%= cspNonce %>" src="/js/donation.js"></script>
 </body>
 </html>

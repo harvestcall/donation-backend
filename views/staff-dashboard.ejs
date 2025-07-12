@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title><%= staff.name %> – Staff Dashboard</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css ">
   <style nonce="<%= cspNonce %>">
     :root {
       --primary: #003366;
@@ -181,6 +181,19 @@
       color: var(--muted);
       font-size: 0.9rem;
     }
+
+    .change-password-link {
+      display: block;
+      text-align: center;
+      margin-top: 1rem;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .change-password-link:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -198,6 +211,13 @@
       </div>
     </div>
 
+    <!-- 🔐 Add Change Password Link -->
+    <div style="text-align:center; margin-bottom: 1rem;">
+      <a href="/change-password" class="change-password-link">
+        <i class="fas fa-lock"></i> Change Password
+      </a>
+    </div>
+
     <div class="project-selector">
       <h3><i class="fas fa-project-diagram"></i> View Project Dashboard</h3>
       <select id="project-select">
@@ -206,9 +226,13 @@
     </div>
 
     <div class="month-nav">
-      <a href="/staff-dashboard?month=<%= prev %>" class="nav-btn"><i class="fas fa-chevron-left"></i></a>
+      <a href="/staff-dashboard?month=<%= prev %>" class="nav-btn">
+        <i class="fas fa-chevron-left"></i>
+      </a>
       <div class="current-month"><%= title %></div>
-      <a href="/staff-dashboard?month=<%= next %>" class="nav-btn"><i class="fas fa-chevron-right"></i></a>
+      <a href="/staff-dashboard?month=<%= next %>" class="nav-btn">
+        <i class="fas fa-chevron-right"></i>
+      </a>
     </div>
 
     <div class="kpi-cards">
@@ -315,7 +339,7 @@
         });
       } catch (err) {
         const select = document.getElementById('project-select');
-        select.innerHTML = '<option value=\"\">Failed to load projects</option>';
+        select.innerHTML = '<option value="">Failed to load projects</option>';
       }
     }
 
@@ -323,7 +347,12 @@
 
     document.querySelectorAll('.nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.body.innerHTML = '<div style=\"display:flex;justify-content:center;align-items:center;height:100vh;\"><div style=\"animation: spin 1s linear infinite; width: 60px; height: 60px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center;\"><i class=\"fas fa-spinner\" style=\"font-size: 30px; color: #003366;\"></i></div></div>';
+        document.body.innerHTML = `
+          <div style="display:flex;justify-content:center;align-items:center;height:100vh;">
+            <div style="animation: spin 1s linear infinite; width: 60px; height: 60px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center;">
+              <i class="fas fa-spinner" style="font-size: 30px; color: #003366;"></i>
+            </div>
+          </div>`;
         document.head.innerHTML += '<style>@keyframes spin {100% {transform: rotate(360deg);}}</style>';
       });
     });

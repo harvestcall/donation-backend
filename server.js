@@ -1,8 +1,7 @@
 // ✅ Load environment variables
 require('dotenv').config();
 
-
-// ✅ Core dependencies and modules
+// ✅ Core dependencies
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -15,41 +14,105 @@ const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
 const crypto = require('crypto');
 const Joi = require('joi');
-const { body, param, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
-const apicache = require('apicache');
-const cache = apicache.middleware;
 const formatCurrency = require('./utils/formatCurrency');
 const logger = require('./utils/logger');
 const { notifyAdmin } = require('./utils/alerts');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const cookieParser = require('cookie-parser');
+const DOMPurify = require('dompurify') (require('jsdom').JSDOM('').window);
+const validator = require('validator');
+
+// ✅ PostgreSQL pool
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
+
+const isProduction = process.env.NODE_ENV === 'production'; // For secure settings
+
+// ✅ Custom error classes
+class AppError extends Error {
+  constructor(message, statusCode) {
+    super(message);
+    this.statusCode = statusCode;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+class DatabaseError extends AppError {
+  constructor(message) {
+    super(message || 'Database operation failed', 500);
+  }
+}
+class NotFoundError extends AppError {
+  constructor(message) {
+    super(message || 'Resource not found', 404);
+  }
+}
+
+// ✅ Double Csrf Options
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
- 
 
+function getSessionIdentifier(req) {
+  return req.session && req.sessionID ? req.sessionID : 'fallback-secret';
+}
+
+const finalOptions = {
+  ...options,
+  getSecret: (req) => {
+    if (!req.session.csrfSecret) {
+      req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+    }
+    return req.session.csrfSecret;
+  },
+  getSessionIdentifier: getSessionIdentifier,
+  cookieOptions: {
+    httpOnly: false,
+    sameSite: 'lax',
+    secure: isProduction,
+    maxAge: 1000 * 60 * 15 // 15 minutes
+  }
+};
+
+const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
+
+// ✅ Initialize Express app
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-app.set('trust proxy', true);  // Trust Render.com proxies
+app.set('trust proxy', true); // Trust Render.com proxies
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-const isProduction = process.env.NODE_ENV === 'production';
-
-
-// Generate CSP nonce per request
+// ✅ Generate CSP nonce per request
 app.use((req, res, next) => {
   res.locals.cspNonce = Buffer.from(crypto.randomBytes(16)).toString('base64');
   next();
 });
 
-// Apply CSP headers using middleware wrapper
+// ✅ Session middleware - MUST come before CSRF
+app.use(session({
+  name: '__Host-hc-session',
+  store: new pgSession({
+    pool: pgPool,
+    tableName: 'session',
+    createTableIfMissing: true
+  }),
+  secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    path: '/',
+    secure: isProduction,
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  }
+}));
+
+// ✅ Apply CSP headers after session middleware
 app.use((req, res, next) => {
   helmet.contentSecurityPolicy({
     useDefaults: false,
@@ -77,134 +140,49 @@ app.use((req, res, next) => {
   })(req, res, next);
 });
 
-// Add getSessionIdentifier to options
-const finalOptions = {
-  ...options,
-  getSessionIdentifier: (req) => req.sessionID
-};
-
-// Apply after session middleware
-app.use(session({ /* your session config */ }));
-
-
-
-
-// ✅ CORS Configuration - Added per security recommendation
-app.use(cors({ 
+// ✅ CORS Configuration
+app.use(cors({
   origin: process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   credentials: true
 }));
 
+// ✅ Static files + body parsers
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Static + body parsers
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json({
-  verify: (req, res, buf) => { req.rawBody = buf; }
-}));
-
-app.use(cookieParser());
-
-// MISSING: Session middleware configuration
-app.use(session({
-  name: '__Host-hc-session',
-  store: new pgSession({
-    pool: pgPool,
-    tableName: 'session',
-    createTableIfMissing: true
-  }),
-  secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    path: '/',
-    secure: isProduction,
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 30 * 24 * 60 * 60 * 1000
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
   }
 }));
+app.use(cookieParser());
 
-const { doubleCsrfProtection } = doubleCsrf({
-  ...options,
-  getSessionIdentifier: (req) => req.sessionID
-});
-
+// ✅ Apply doubleCsrfProtection after session and CSP
 app.use(doubleCsrfProtection);
 
+// ✅ Ensure CSRF token is available in locals
 app.use((req, res, next) => {
   try {
-    res.locals.csrfToken = req.csrfToken();
-    res.cookie(csrfCookieName, res.locals.csrfToken, {
-      httpOnly: false,
-      sameSite: 'lax',
-      secure: isProduction,
-      path: '/',
-      maxAge: 15 * 60 * 1000
-    });
+    if (req.sessionID) {
+      const token = generateToken(req, res);
+      res.locals.csrfToken = token;
+      res.cookie(csrfCookieName, token, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: isProduction,
+        path: '/',
+        maxAge: 1000 * 60 * 15
+      });
+    }
     next();
   } catch (err) {
     logger.error('CSRF token error:', err.message);
-    next(err);
+    next(new AppError('CSRF token generation failed', 500));
   }
 });
 
-
-// Serve static files from "public" directory
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Generate CSP nonce for each request
-app.use((req, res, next) => {
-  // Generate a base64-encoded random value for CSP nonce
-  const nonce = Buffer.from(crypto.randomBytes(16)).toString('base64');
-  res.locals.cspNonce = nonce;
-  next();
-});
-
-
-logger.info('NODE_ENV:', process.env.NODE_ENV);
-
-function validateRequest(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ error: errors.array()[0].msg });
-  }
-  next();
-}
-
-
-const BCRYPT_COST = Math.min(
-  Math.max(parseInt(process.env.BCRYPT_COST) || 8, 8),
-  12
-);
-logger.info(`🔒 Using bcrypt cost factor: ${BCRYPT_COST}`);
-
-// Add after bodyParser middleware:
-app.use((req, res, next) => {
-  if (req.params.id) {
-    const id = parseInt(req.params.id);
-    req.sanitizedId = isNaN(id) ? null : id;
-  }
-  next();
-});
-
-// Add after Joi require:
-const metadataSchema = Joi.object({
-  staffId: Joi.string().optional(),
-  projectId: Joi.string().optional(),
-  donorName: Joi.string().optional(),
-  donationType: Joi.string().valid('one-time', 'recurring').optional()
-});
-
-
-// ✅ Database connection
-const db = require('./db');
-logger.info("🛠 Using DB Connection:", db.client.config.connection);
-logger.info("🌍 Running in environment:", process.env.NODE_ENV);
-
-// Critical environment validation
+// ✅ Environment validation
 const requiredEnvVars = [
   'PAYSTACK_SECRET_KEY',
   'DATABASE_URL',
@@ -217,12 +195,11 @@ if (missingVars.length > 0) {
   throw new Error(`❌ Critical ENV variables missing: ${missingVars.join(', ')}`);
 }
 
-
 // ✅ Rate Limiters
 const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 50,
-  message: 'Too many payment requests from this IP, please try again later'
+  message: 'Too many payment requests from this IP'
 });
 
 const webhookLimiter = rateLimit({
@@ -234,50 +211,73 @@ const webhookLimiter = rateLimit({
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
-  message: 'Too many login attempts, please try again later'
+  message: 'Too many login attempts'
 });
 
 // ✅ Paystack webhook verification
 const verifyPaystackWebhook = (req, res, next) => {
-  // Use raw body instead of JSON.stringify(req.body)
   const hash = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
-                     .update(req.rawBody) // CHANGED THIS LINE
+                     .update(req.rawBody)
                      .digest('hex');
-  
-  if (hash === req.headers['x-paystack-signature']) {
-    return next();
-  }
-  res.status(401).send('Unauthorized');
+  hash === req.headers['x-paystack-signature'] ? next() : res.status(401).send('Unauthorized');
 };
 
-function escapeHtml(str) {
-  if (typeof str !== 'string') return str;
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+// ✅ Security helpers
+const escapeHtml = str => typeof str === 'string'
+  ? str.replace(/&/g, '&amp;')
+       .replace(/</g, '<')
+       .replace(/>/g, '>')
+       .replace(/"/g, '&quot;')
+       .replace(/'/g, '&#039;')
+  : str;
+
+const sanitizeHeader = str => typeof str === 'string'
+  ? str.replace(/[\r\n]/g, '')
+  : '';
+
+// ✅ Database connection (Knex)
+const db = require('./db');
+logger.info(`🛠 Using DB: ${db.client.config.connection.host}`);
+logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+
+// ✅ Bcrypt configuration
+const BCRYPT_COST = Math.min(Math.max(parseInt(process.env.BCRYPT_COST) || 8, 8), 12);
+logger.info(`🔒 Bcrypt cost: ${BCRYPT_COST}`);
+
+// ✅ Joi validation schema
+const metadataSchema = Joi.object({
+  staffId: Joi.string().optional(),
+  projectId: Joi.string().optional(),
+  donorName: Joi.string().optional(),
+  donationType: Joi.string().valid('one-time', 'recurring').optional()
+});
+
+// ✅ Request validation helper
+const validateRequest = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+  next();
+};
+
+// ✅ Display name helper
+async function getDisplayName(type, id, db) {
+  const table = type === 'staff' ? 'staff' : 'projects';
+  const result = await db(table).where('id', parseInt(id)).first();
+  return result ? result.name : null;
 }
 
-// Add after escapeHtml function
-function sanitizeHeader(str) {
-  if (typeof str !== 'string') return '';
-  return str.replace(/[\r\n]/g, '');
-}
-
-// ✅ Secure Basic Auth Middleware
+// ✅ Auth middleware
 const requireAuth = (req, res, next) => {
   const auth = req.headers.authorization;
-
-  if (!auth || !auth.startsWith('Basic ')) {
+  if (!auth?.startsWith('Basic ')) {
     return res.status(401)
       .set('WWW-Authenticate', 'Basic realm="Dashboard"')
       .send('Authentication required.');
   }
 
   const base64Credentials = auth.split(' ')[1];
-
   let credentials;
   try {
     credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
@@ -286,7 +286,6 @@ const requireAuth = (req, res, next) => {
   }
 
   const [username, password] = credentials.split(':');
-
   if (!username || !password) {
     return res.status(400).send('Missing username or password.');
   }
@@ -298,62 +297,35 @@ const requireAuth = (req, res, next) => {
   return res.status(401).send('Access denied.');
 };
 
-// ✅ Helper: Fetch name of staff or project
-async function getDisplayName(type, id, db) {
-  logger.info(`🔍 Looking up ${type} ID: ${id}`);
-  const numericId = typeof id === 'string' ? parseInt(id) : id;
-  if (typeof numericId !== 'number' || isNaN(numericId) || numericId <= 0) {
-    logger.info(`❌ Invalid ID: ${id}`);
-    return null;
-  }
-  try {
-    const table = type === 'staff' ? 'staff' : 'projects';
-    const result = await db(table).where('id', numericId).first();
-    if (result) {
-      logger.info(`✅ Found ${type}:`, result);
-      return result.name;
-    } else {
-      const allRecords = await db(table).select('*');
-      logger.info(`❌ No ${type} found with ID: ${numericId}`);
-      logger.info(`📋 All ${type} records:`, allRecords);
-      return null;
-    }
-  } catch (err) {
-    logger.error(`❌ Database error:`, err);
-    return null;
-  }
+// Sanitize and escape strings for safe HTML display
+function sanitizeHtml(input) {
+  return DOMPurify.sanitize(validator.escape(input || ''));
 }
 
-// ✅ Custom Error Classes
-class AppError extends Error {
-  constructor(message, status) {
-    super(message);
-    this.name = this.constructor.name;
-    this.status = status || 500;
-    Error.captureStackTrace(this, this.constructor);
-  }
+// Sanitize and trim strings for general text inputs
+function sanitizeText(input) {
+  return validator.trim(input || '');
 }
 
-class DatabaseError extends AppError {
-  constructor(message) {
-    super(message || 'Database operation failed', 500);
-  }
+// Sanitize and normalize emails
+function sanitizeEmail(input) {
+  return validator.normalizeEmail(input || '', { gmail_remove_dots: false });
 }
 
-class NotFoundError extends AppError {
-  constructor(message) {
-    super(message || 'Resource not found', 404);
-  }
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, m => ({
+    '&': '&amp;',
+    '<': '<',
+    '>': '>',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[m]));
 }
 
-app.get('/csrf-test', doubleCsrfProtection, (req, res) => {
+// ===== ROUTES START HERE ===== //
+app.get('/healthz', (req, res) => res.status(200).send('OK'));
+app.get('/csrf-test', (req, res) => {
   res.send(`Your CSRF token is: ${res.locals.csrfToken}`);
-});
-
-
-// Health check endpoint (for Render and debugging)
-app.get('/healthz', (req, res) => {
-  res.status(200).send('OK');
 });
 
 // ✅ Database initialization
@@ -362,15 +334,24 @@ async function initializeDatabase() {
     await db.migrate.latest();
     logger.info('📦 Migrations completed');
     const staff = await db('staff').select('*');
-    logger.info('👥 Staff records:', staff);
+    logger.info(`👥 Staff records: ${staff.length}`);
   } catch (err) {
-    logger.error('❌ Database initialization error:', err.message);
+    logger.error('❌ Database init error:', err.message);
+    notifyAdmin(`Database initialization failed: ${err.message}`);
   }
 }
 
+// ✅ Start server
+initializeDatabase().then(() => {
+  app.listen(PORT, () => {
+    logger.info(`🚀 Server running on port ${PORT}`);
+  });
+});
 
+
+// Root route - Donation Form
 app.get('/', (req, res, next) => {
-  logger.debug('[ROUTE /] About to render donation-form EJS');
+  logger.debug('[ROUTE /] Rendering donation-form EJS');
   res.render('donation-form', {
     cspNonce: res.locals.cspNonce,
     csrfToken: res.locals.csrfToken
@@ -388,389 +369,168 @@ app.get('/', (req, res, next) => {
   });
 
 
-// Payment initialization endpoint
-app.post('/initialize-payment',
-  paymentLimiter,
-  async (req, res) => {
-    logger.debug('[POST /initialize-payment] --- TOP OF ROUTE ---');
-    logger.debug('[POST /initialize-payment] Request cookies:', req.cookies);
-    logger.debug('[POST /initialize-payment] Session ID:', req.sessionID);
-    logger.debug('[POST /initialize-payment] Session:', req.session);
-    logger.debug('[POST /initialize-payment] X-CSRF-Token header:', req.headers['x-csrf-token']);
-    logger.debug('[POST /initialize-payment] body._csrf:', req.body._csrf);
-    try {
-      const { email, amount, currency, metadata } = req.body;
-      const amountInKobo = amount * 100;
+// ✅ Payment Initialization Route
+app.post('/initialize-payment', [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('amount').isFloat({ min: 0.5 }).toFloat().withMessage('Amount must be at least ₦0.50'),
+  body('currency').optional().isIn(['NGN', 'USD']).withMessage('Currency must be NGN or USD'),
+  body('donationType').optional().isIn(['one-time', 'recurring']).withMessage('Invalid donation type'),
+  body('purpose').optional().isIn(['general', 'staff', 'project']).withMessage('Invalid purpose selected'),
+  body('name').optional().trim().escape().withMessage('Invalid name format')
+], validateRequest, csrfLimiter, async (req, res) => {
+  try {
+    const { email, amount, currency = 'NGN', donationType = 'one-time', purpose = 'general' } = req.body;
+    const donorName = req.body.name || 'Friend';
 
-      const paymentData = {
-        email,
-        amount: amountInKobo,
-        currency,
-        metadata,
-        callback_url: `${process.env.FRONTEND_BASE_URL}/thank-you`
-      };
+    // ✅ Prepare metadata
+    const metadata = {};
+    if (donorName) metadata.donorName = validator.escape(donorName.trim());
+    metadata.donationType = donationType;
+    metadata.purpose = purpose;
 
-      const response = await axios.post(
-        'https://api.paystack.co/transaction/initialize',
-        paymentData,
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+    const amountInKobo = Math.round(amount * 100); // Convert to kobo
 
-      res.json({
-        status: 'success',
-        authorization_url: response.data.data.authorization_url,
-        reference: response.data.data.reference
-      });
-
-    } catch (error) {
-      logger.error(error.response?.data || error.message);
-      // Always return JSON error for frontend
-      if (error.response && error.response.data) {
-        // Paystack or axios error with response
-        return res.status(error.response.status || 500).json({
-          status: 'error',
-          message: error.response.data.message || 'Payment initialization failed',
-          details: error.response.data
-        });
+    // ✅ Call Paystack API
+    const response = await axios.post('https://api.paystack.co/transaction/initialize ', {
+      email,
+      amount: amountInKobo,
+      currency,
+      metadata,
+      callback_url: `${process.env.FRONTEND_BASE_URL}/thank-you`
+    }, {
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        'Content-Type': 'application/json'
       }
-      // Other error
-      res.status(500).json({
-        status: 'error',
-        message: error.message || 'Payment initialization failed'
-      });
-    }
-  }
-);
+    });
 
-// Webhook for payment verification
-app.post('/webhook',
-  webhookLimiter,
-  verifyPaystackWebhook,
-  async (req, res, next) => {
+    const authorizationUrl = response.data.data.authorization_url;
+    const reference = response.data.data.reference;
+
+    // ✅ Log payment request
+    logger.info(`💸 Payment initialized: ${reference} | Email: ${email} | Amount: ₦${amount}`);
+
+    // ✅ Build thank-you URL with sanitized values
+    const thankYouUrl = new URL(`${process.env.FRONTEND_BASE_URL}/thank-you`);
+    thankYouUrl.searchParams.append('name', donorName);
+    thankYouUrl.searchParams.append('amount', amount);
+    thankYouUrl.searchParams.append('currency', currency);
+    thankYouUrl.searchParams.append('type', donationType);
+    thankYouUrl.searchParams.append('purpose', purpose);
+
+    res.json({
+      status: 'success',
+      authorization_url: authorizationUrl,
+      reference
+    });
+
+  } catch (error) {
+    logger.error('❌ Error initializing payment:', error.message);
+    logger.debug('Error details:', error.response?.data || 'No response data');
+
+    return res.status(error.response?.status || 500).json({
+      status: 'error',
+      message: error.response?.data?.message || error.message || 'Payment initialization failed'
+    });
+  }
+});
+
+
+// ✅ Webhook Handler - Process Paystack webhook events
+app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, next) => {
   try {
     const event = req.body;
 
-    if (event.event === 'charge.success') {
-      const paymentData = event.data;
+    // ✅ Only handle successful charge events
+    if (event.event !== 'charge.success') {
+      logger.info(`🔔 Ignored webhook event: ${event.event}`);
+      return res.status(200).send('Ignored');
+    }
 
-      if (!paymentData.amount || paymentData.amount <= 0) {
-        logger.warn('❌ Invalid or zero donation amount:', paymentData.amount);
-        return res.status(400).json({
-  error: {
-    name: 'ValidationError',
-    message: 'Invalid donation amount'
-  }
-});
+    const paymentData = event.data;
 
+    // ✅ Validate amount
+    if (!paymentData.amount || paymentData.amount <= 0) {
+      logger.warn('❌ Invalid or zero donation amount:', paymentData.amount);
+      return res.status(400).json({
+        error: {
+          name: 'ValidationError',
+          message: 'Invalid donation amount'
+        }
+      });
+    }
+
+    // ✅ Sanitize email
+    const sanitizedEmail = sanitizeEmail(paymentData.customer.email);
+
+    // ✅ Parse metadata safely
+    let safeMetadata = {};
+    try {
+      if (typeof paymentData.metadata === 'string') {
+        safeMetadata = JSON.parse(paymentData.metadata);
+      } else {
+        safeMetadata = paymentData.metadata || {};
       }
+    } catch (err) {
+      logger.warn('⚠️ Failed to parse metadata:', err.message);
+      safeMetadata = {};
+    }
 
-      const { error, value: validMetadata } = metadataSchema.validate(paymentData.metadata || {});
-      if (error) {
-        logger.error('❌ Invalid metadata in webhook:', error.details);
-        return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid metadata' } });
-      }
-
-      logger.info('✅ Verified Payment:', paymentData.reference);
-      const { donorName, ...safeMetadata } = paymentData.metadata || {};
-      logger.info('🔎 Payment Metadata:', safeMetadata);
-
-      // Save to database
-      await db('donations').insert({
-      email: paymentData.customer.email,
+    // ✅ Insert into DB
+    await db('donations').insert({
+      email: sanitizedEmail,
       reference: paymentData.reference,
       amount: paymentData.amount,
       currency: paymentData.currency,
-      metadata: JSON.stringify(paymentData.metadata),
-      created_at: new Date().toISOString() // ✅ ensures proper timestamp
-      });
+      meta JSON.stringify(safeMetadata),
+      created_at: new Date().toISOString()
+    });
 
-      logger.info('✅ Donation saved to database!');
+    // ✅ Log success
+    const donorName = safeMetadata.donorName || 'Anonymous Supporter';
+    logger.info(`✅ Verified Payment: ${paymentData.reference} | Donor: ${donorName}`);
 
-      // Initialize variables with default values
-      let purposeText = 'General Donation';
+    // ✅ Send thank-you email
+    const formattedAmount = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: paymentData.currency
+    }).format(paymentData.amount / 100);
 
-      // Check if we have staffId or projectId
-      // 🛡️ Defensive parsing for metadata IDs
-let staffId = null;
-let projectId = null;
+    const purposeText = safeMetadata.purpose === 'staff' ? 'Staff Support' :
+                        safeMetadata.purpose === 'project' ? 'Project Support' : 'General Ministry';
 
-if (validMetadata) {
-  const rawStaffId = validMetadata.staffId;
-  const rawProjectId = validMetadata.projectId;
-
-  if (typeof rawStaffId === 'string' && /^\d+$/.test(rawStaffId.trim())) {
-    staffId = parseInt(rawStaffId.trim(), 10);
-  }
-
-  if (typeof rawProjectId === 'string' && /^\d+$/.test(rawProjectId.trim())) {
-    projectId = parseInt(rawProjectId.trim(), 10);
-  }
-}
-
-let staffName = null;
-let projectName = null;
-
-if (staffId !== null) {
-  staffName = await getDisplayName('staff', staffId, db);
-}
-
-if (projectId !== null) {
-  projectName = await getDisplayName('projects', projectId, db);
-}
-
-if (staffName && projectName) {
-  purposeText = `Staff + Project Support -- ${staffName} & ${projectName}`;
-} else if (staffName) {
-  purposeText = `Staff Support -- ${staffName}`;
-} else if (projectName) {
-  purposeText = `Project Support -- ${projectName}`;
-} else {
-  logger.warn('❌ No valid staffId or projectId in metadata.');
-}
-
-      logger.info('Purpose:', purposeText);
-
-      // Send beautiful thank-you email
-      const sanitizedDonorName = sanitizeHeader(donorName || '');
-      const donorFirstName = sanitizedDonorName.split(' ')[0] || 'Friend';
-      const toEmail = sanitizeHeader(paymentData.customer.email);
-      const formattedAmount = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: paymentData.currency || 'NGN',
-  minimumFractionDigits: 2,
-}).format(paymentData.amount / 100);
-
-      
-      const donationDate = new Date().toLocaleDateString('en-US', {
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-  timeZone: 'UTC'
-});
-
-
+    if (process.env.SENDGRID_API_KEY) {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
       await sgMail.send({
-  to: toEmail,  // Use sanitized email
-  from: {
-    name: 'Harvest Call Ministries',
-    email: 'giving@harvestcallafrica.org'
-  },
-  subject: sanitizeHeader(`Thank You, ${donorFirstName}! Your Generosity is Making a Difference`),
+        to: sanitizedEmail,
+        from: { name: 'Harvest Call Ministries', email: 'giving@harvestcallafrica.org' },
+        subject: `Thank You, ${donorName}! Your Donation Has Been Received`,
         html: `
-          <!DOCTYPE html>
           <html>
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Thank You for Your Donation</title>
-            <style>
-              /* Modern email-friendly CSS */
-              body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                line-height: 1.6;
-                color: #333333;
-                background-color: #f8f9fa;
-                margin: 0;
-                padding: 0;
-              }
-              
-              .container {
-                max-width: 600px;
-                margin: 0 auto;
-                padding: 20px;
-                background: #ffffff;
-              }
-              
-              .header {
-                background: linear-gradient(135deg, #003366 0%, #2E7D32 100%);
-                color: white;
-                padding: 30px;
-                text-align: center;
-                border-radius: 8px 8px 0 0;
-              }
-              
-              .header-title {
-                font-size: 28px;
-                font-weight: 700;
-                margin-bottom: 10px;
-                letter-spacing: -0.5px;
-              }
-              
-              .header-subtitle {
-                font-size: 18px;
-                font-weight: 300;
-                max-width: 500px;
-                margin: 0 auto;
-                line-height: 1.5;
-                color: #fdf5e6;
-              }
-              
-              .content {
-                padding: 30px;
-              }
-              
-              .thank-you {
-                font-size: 24px;
-                color: #003366;
-                margin-bottom: 25px;
-                font-weight: 700;
-                text-align: center;
-              }
-              
-              .highlight {
-                color: #E67E22;
-                font-weight: 700;
-                font-size: 20px;
-              }
-              
-              .details-card {
-                background: #fdf5e6;
-                padding: 25px;
-                border-radius: 12px;
-                margin: 25px 0;
-                border: 1px solid #f0e6d6;
-              }
-              
-              .detail-row {
-                display: flex;
-                margin-bottom: 12px;
-                padding-bottom: 12px;
-                border-bottom: 1px solid #f0e6d6;
-              }
-              
-              .detail-label {
-                font-weight: 600;
-                color: #8D6E63;
-                min-width: 120px;
-              }
-              
-              .detail-value {
-                flex: 1;
-                font-weight: 500;
-              }
-              
-              .impact-statement {
-                font-style: italic;
-                color: #2E7D32;
-                margin: 30px 0;
-                padding: 20px;
-                background: #e8f5e9;
-                border-radius: 8px;
-                text-align: center;
-                font-size: 18px;
-                border-left: 4px solid #2E7D32;
-              }
-              
-              .cta-button {
-                display: block;
-                width: 70%;
-                max-width: 300px;
-                margin: 30px auto;
-                padding: 16px;
-                background: #E67E22;
-                color: white !important;
-                text-align: center;
-                text-decoration: none;
-                font-weight: 700;
-                font-size: 18px;
-                border-radius: 8px;
-                transition: all 0.3s ease;
-              }
-              
-              .cta-button:hover {
-                background: #d35400;
-                transform: translateY(-2px);
-              }
-              
-              .signature {
-                margin-top: 30px;
-                border-top: 1px solid #e0e0e0;
-                padding-top: 20px;
-                text-align: center;
-              }
-              
-              .footer {
-                text-align: center;
-                margin-top: 40px;
-                font-size: 14px;
-                color: #8D6E63;
-              }
-              
-              .footer a {
-                color: #2E7D32;
-                text-decoration: none;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 class="header-title">Thank You for Your Support!</h1>
-                <p class="header-subtitle">Your donation is helping transform lives across Africa</p>
+            <body style="font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px;">
+              <div style="background: white; border-left: 6px solid #003366; padding: 20px; max-width: 600px; margin: auto; border-radius: 8px;">
+                <h2 style="color: #003366;">Thank You for Your Generosity</h2>
+                <p>We're incredibly grateful for your support.</p>
+                <p><strong>Donated:</strong> ${formattedAmount}</p>
+                <p><strong>Purpose:</strong> ${purposeText}</p>
+                <p>Your gift helps indigenous missionaries reach unreached communities across Africa.</p>
+                <p style="margin-top: 20px;"><a href="https://harvestcallafrica.org " style="color: #003366;">Visit Our Website</a></p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                <p style="font-size: 12px; color: #6c757d;">You're receiving this because you made a donation to Harvest Call Ministries.</p>
               </div>
-              
-              <div class="content">
-                <h2 class="thank-you">Thank You, ${escapeHtml(donorFirstName)}!</h2>
-                
-                <p>We're incredibly grateful for your generous donation of <span class="highlight">${formattedAmount}</span> to Harvest Call Ministries. Your support is making a tangible difference in advancing God's kingdom across Africa and beyond.</p>
-                
-                <div class="details-card">
-                  <div class="detail-row">
-                    <div class="detail-label">Reference:</div>
-                    <div class="detail-value">${paymentData.reference}</div>
-                  </div>
-                  <div class="detail-row">
-                    <div class="detail-label">Donation Type:</div>
-                    <div class="detail-value">${validMetadata.donationType || 'General'}</div>
-                  </div>
-                  <div class="detail-row">
-                    <div class="detail-label">Purpose:</div>
-                    <div class="detail-value">${purposeText}</div>
-                  </div>
-                  <div class="detail-row">
-                    <div class="detail-label">Date:</div>
-                    <div class="detail-value">${donationDate}</div>
-                  </div>
-                </div>
-                
-                <p class="impact-statement">"Your partnership enables indigenous missionaries to bring the Gospel to unreached communities."</p>
-                
-                <p>We've attached your tax receipt to this email for your records. This receipt may be used for tax deduction purposes according to your local regulations.</p>
-                
-                <a href="https://harvestcallafrica.org/impact" class="cta-button">
-                  See How Your Donation Makes an Impact
-                </a>
-                
-                <div class="signature">
-                  <p>With heartfelt gratitude,</p>
-                  <p><strong>The Harvest Call Ministries Team</strong></p>
-                  <p>Abuja, Nigeria</p>
-                </div>
-              </div>
-              
-              <div class="footer">
-                <p>Harvest Call Ministries &bull; Abuja, Nigeria</p>
-                <p><a href="https://harvestcallafrica.org">harvestcallafrica.org</a> &bull; <a href="mailto:info@harvestcallafrica.org">info@harvestcallafrica.org</a></p>
-                <p>You're receiving this email because you made a donation to Harvest Call Ministries.</p>
-              </div>
-            </div>
-          </body>
+            </body>
           </html>
         `
       });
 
-      logger.info('📧 Beautiful thank-you email sent via SendGrid!');
+      logger.info(`📧 Thank-you email sent to ${sanitizedEmail}`);
     }
 
-     res.status(200).send('Webhook received');
-  } catch (error) {
-    logger.error('❌ Error processing webhook:', error.message);
-    res.status(400).json({ error: error.message });
+    res.status(200).json({ status: 'success' });
+
+  } catch (err) {
+    logger.error('❌ Webhook handler error:', err.message);
+    next(new AppError('Failed to process webhook.', 500));
   }
 });
 
@@ -873,8 +633,7 @@ app.get('/admin/summary',
       const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
       const [year, month] = targetMonth.split('-').map(Number);
       const current = new Date(Date.UTC(year, month - 1, 1));
-      
-      // Validate month format
+
       if (!/^\d{4}-\d{2}$/.test(targetMonth)) {
         return res.status(400).json({ error: { name: 'ValidationError', message: 'Invalid month format' } });
       }
@@ -895,9 +654,8 @@ app.get('/admin/summary',
           .whereBetween('created_at', [monthStart, monthEnd])
           .groupBy('staff_id', 'project_id'),
         db('donations')
-          .select('email')
-          .whereBetween('created_at', [monthStart, monthEnd])
           .distinct('email')
+          .whereBetween('created_at', [monthStart, monthEnd])
       ]);
 
       const staffMap = new Map(allStaff.map(s => [s.id, s]));
@@ -907,7 +665,6 @@ app.get('/admin/summary',
         total: 0,
         totalStaff: 0,
         totalProject: 0,
-        donors: new Set(rawDonations.map(d => d.email)),
         records: {}
       };
 
@@ -938,14 +695,12 @@ app.get('/admin/summary',
         }
       }
 
-      const donorCount = summary.donors.size;
+      const donorCount = rawDonations.length;
       const avgGift = donorCount ? (summary.total / donorCount).toFixed(2) : 0;
-
       const prevMonth = new Date(current);
       prevMonth.setUTCMonth(prevMonth.getUTCMonth() - 1);
       const nextMonth = new Date(current);
       nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
-
       const format = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
       const prev = format(prevMonth);
       const next = format(nextMonth);
@@ -954,6 +709,8 @@ app.get('/admin/summary',
         month: 'long',
         timeZone: 'UTC'
       });
+
+      logger.info(`🔐 Admin summary accessed by IP: ${req.headers['x-forwarded-for'] || req.socket.remoteAddress}`);
 
       res.render('admin-summary', {
         cspNonce: res.locals.cspNonce,
@@ -965,10 +722,70 @@ app.get('/admin/summary',
         title
       });
     } catch (err) {
-      next(err);
+      next(new DatabaseError('Failed to load admin summary'));
     }
   }
 );
+
+// Export Admin Summary
+app.get('/admin/export/summary', requireAuth, async (req, res, next) => {
+  const format = req.query.format || 'csv';
+  const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
+  const [year, month] = targetMonth.split('-').map(Number);
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+  const [allStaff, allProjects, aggregatedData] = await Promise.all([
+    db('staff').select('id', 'name', 'active'),
+    db('projects').select('id', 'name'),
+    db('donations')
+      .select(
+        db.raw("CASE WHEN metadata->>'staffId' ~ '^\\d+$' THEN (metadata->>'staffId')::integer ELSE NULL END as staff_id"),
+        db.raw("CASE WHEN metadata->>'projectId' ~ '^\\d+$' THEN (metadata->>'projectId')::integer ELSE NULL END as project_id"),
+        db.raw('SUM(amount) as total_amount')
+      )
+      .whereBetween('created_at', [monthStart, monthEnd])
+      .groupBy('staff_id', 'project_id')
+  ]);
+
+  const staffMap = new Map(allStaff.map(s => [s.id, s]));
+  const projectMap = new Map(allProjects.map(p => [p.id, p]));
+
+  const rows = [];
+
+  for (const row of aggregatedData) {
+    const amount = row.total_amount / 100;
+    if (row.staff_id && staffMap.has(row.staff_id)) {
+      const staff = staffMap.get(row.staff_id);
+      rows.push([staff.name, 'Staff', amount]);
+    } else if (row.project_id && projectMap.has(row.project_id)) {
+      const project = projectMap.get(row.project_id);
+      rows.push([project.name, 'Project', amount]);
+    }
+  }
+
+  if (format === 'csv') {
+    let csv = 'Recipient,Type,Amount (₦)\n';
+    csv += rows.map(r => `"${r[0]}","${r[1]}","${r[2]}"`).join('\n');
+    res.header('Content-Type', 'text/csv');
+    res.attachment(`donation-summary-${targetMonth}.csv`);
+    return res.send(csv);
+  }
+
+  res.status(400).send('Invalid format requested');
+});
+
+// Admin Logout
+app.get('/admin/logout', requireAuth, (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      logger.error('Logout error:', err);
+      return res.status(500).send('Logout failed.');
+    }
+    res.clearCookie('connect.sid');
+    res.redirect('/');
+  });
+});
 
 
 
@@ -1103,7 +920,8 @@ app.post('/admin/add-project',
   ],
   validateRequest,
   async (req, res, next) => {
-    const { name, description } = req.body;
+    const name = sanitizeText(req.body.name);
+    const description = sanitizeHtml(req.body.description || '');
 
     try {
       await db('projects').insert({
@@ -1175,8 +993,11 @@ app.post('/admin/add-staff-account',
   validateRequest,
   async (req, res, next) => {
     try {
-      const { name, password } = req.body;
-      const email = req.body.email.toLowerCase();
+      const { name, email } = req.body;
+      const sanitizedName = sanitizeText(name);
+      const sanitizedEmail = sanitizeEmail(email.toLowerCase());
+
+      const password = req.body.password;
 
       const existing = await db('staff').where({ email }).first();
       if (existing) {
@@ -1190,9 +1011,16 @@ app.post('/admin/add-staff-account',
       }
 
       await db.transaction(async trx => {
-        const insertedStaff = await trx('staff')
-          .insert({ name, email, active: true })
-          .returning('id');
+  const sanitizedName = sanitizeText(name);
+  const sanitizedEmail = sanitizeEmail(email);
+
+  const insertedStaff = await trx('staff')
+    .insert({
+      name: sanitizedName,
+      email: sanitizedEmail,
+      active: true
+    })
+    .returning('id');
 
         const staffId = insertedStaff[0]?.id || insertedStaff[0];
         if (!staffId) throw new DatabaseError('Failed to retrieve staff ID after insertion');
@@ -1271,7 +1099,7 @@ const assignments = selectedProjects.map(pid => ({
 });
 
 
-// ✅ Login form route (GET) -- ensure CSRF token is generated
+// ✅ Login Form - GET
 app.get('/login', (req, res) => {
   res.render('login', {
     csrfToken: res.locals.csrfToken,
@@ -1282,13 +1110,12 @@ app.get('/login', (req, res) => {
 
 
 
-// Login Handler
+// ✅ Login Handler - POST
 app.post(
   '/login',
   (req, res, next) => {
     // Log session info for debugging
     logger.debug(`[LOGIN] Session ID: ${req.sessionID}`);
-    logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
     logger.debug(`[LOGIN] Body _csrf: ${req.body._csrf}`);
     logger.debug(`[LOGIN] Cookie csrf-token: ${req.cookies['csrf-token']}`);
     next();
@@ -1304,7 +1131,7 @@ app.post(
   },
   loginLimiter,
   [
-    body('email').isEmail().normalizeEmail().withMessage('Email is required'),
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
   validateRequest,
@@ -1319,74 +1146,100 @@ app.post(
         .first();
 
       if (!account) {
-        return res.status(401).json({
-          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
+        return res.status(401).render('login', {
+          csrfToken: res.locals.csrfToken,
+          cspNonce: res.locals.cspNonce,
+          error: 'Invalid email or password'
         });
       }
 
       if (account.disabled) {
-        return res.status(403).json({
-          error: { name: 'Forbidden', message: 'This account has been disabled.' }
+        return res.status(403).render('login', {
+          csrfToken: res.locals.csrfToken,
+          cspNonce: res.locals.cspNonce,
+          error: 'This account has been disabled'
         });
       }
 
       const isMatch = await bcrypt.compare(password, account.password_hash);
+
       if (!isMatch) {
-        return res.status(401).json({
-          error: { name: 'Unauthorized', message: 'Invalid email or password.' }
+        return res.status(401).render('login', {
+          csrfToken: res.locals.csrfToken,
+          cspNonce: res.locals.cspNonce,
+          error: 'Invalid email or password'
         });
       }
 
-      // ✅ Success: regenerate session and redirect
-      req.session.regenerate(err => {
-        if (err) return next(new AppError('Session regeneration failed', 500));
+      // ✅ Success: Regenerate session and redirect
+      req.session.regenerate(async err => {
+        if (err) {
+          logger.error('❌ Session regeneration failed:', err.message);
+          return next(new AppError('Session regeneration failed', 500));
+        }
+
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
-        // Do NOT set csrfSecret here! Let the CSRF secret middleware handle it on the next GET
+
+        // Clear any previous CSRF secrets – let middleware handle it
+        delete req.session.csrfSecret;
+
         res.redirect(303, '/staff-dashboard');
       });
+
     } catch (err) {
-      next(err);
+      logger.error('Login error:', err.message);
+      next(new AppError('Authentication failed.', 500));
     }
   }
 );
 
 
-
-// Password reset request endpoint
+// Forgot Password - Show Request Form
 app.get('/forgot-password', (req, res) => {
   const csrfToken = res.locals.csrfToken;
   const cspNonce = res.locals.cspNonce;
-  res.render('forgot-password', { csrfToken, cspNonce });
+
+  res.render('forgot-password', {
+    csrfToken,
+    cspNonce
+  });
 });
 
-// ✅ Forgot Password Route - POST
+// Forgot Password - Handle Email Submission
 app.post('/forgot-password', [
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
 ], validateRequest, async (req, res, next) => {
-  const { email } = req.body;
   try {
-    const normalizedEmail = email.toLowerCase();
+    // ✅ Sanitize and normalize email
+    const normalizedEmail = sanitizeEmail(req.body.email.toLowerCase());
+
+    // 🔍 Find account by sanitized email
     const account = await db('staff_accounts').where('email', normalizedEmail).first();
 
     if (account) {
+      // ⚙️ Generate reset token
       const token = jwt.sign({ id: account.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
       const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${token}`;
 
+      // 📨 Send reset link via email
       if (process.env.SENDGRID_API_KEY) {
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
         await sgMail.send({
           to: normalizedEmail,
           from: { name: 'Harvest Call Support', email: 'support@harvestcallafrica.org' },
           subject: 'Password Reset Instructions',
-          html: `...your-html-here...`
+          html: `
+            <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
+            <p>This link will expire in 1 hour.</p>
+          `
         });
       }
 
       logger.info(`Password reset link for ${normalizedEmail}: ${resetLink}`);
     }
 
-    // Always show success message regardless of account existence
+    // ✅ Always respond the same way for security
     res.send(`
       <html>
         <body style="text-align:center; padding:40px;">
@@ -1398,12 +1251,12 @@ app.post('/forgot-password', [
     `);
 
   } catch (err) {
-    logger.error('Password reset request error:', err);
+    logger.error('Password reset request error:', err.message);
     next(new DatabaseError('Failed to process password reset request'));
   }
 });
 
-// ✅ Password Reset Form - Added for token-based password reset
+// GET: Password Reset Form - Displays form to reset password using token
 app.get('/reset-password', (req, res) => {
   const token = req.query.token;
   const csrfToken = res.locals.csrfToken;
@@ -1418,7 +1271,75 @@ app.get('/reset-password', (req, res) => {
     `);
   }
 
-  res.render('reset-password', { csrfToken, token });
+  res.render('reset-password', {
+    csrfToken,
+    token,
+    cspNonce: res.locals.cspNonce
+  });
+});
+
+// POST: Handle password reset form submission
+app.post('/reset-password', [
+  body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('confirmPassword').custom((value, { req }) => value === req.body.newPassword),
+], validateRequest, async (req, res, next) => {
+  const { token, newPassword } = req.body;
+
+  try {
+    // 🔍 Verify the token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(400).send(`
+        <div style="text-align:center; padding:40px;">
+          <h2 style="color:#d32f2f;">Invalid or Expired Token</h2>
+          <p>The password reset token is invalid or has expired.</p>
+          <a href="/forgot-password">Request a new one</a>
+        </div>
+      `);
+    }
+
+    const accountId = decoded.id;
+
+    // 🧾 Get account from DB
+    const account = await db('staff_accounts').where('id', accountId).first();
+    if (!account) {
+      return res.status(404).send(`<div>Account not found</div>`);
+    }
+
+    // ✅ Sanitize email before using it
+    const sanitizedEmail = sanitizeEmail(account.email);
+
+    // 🔐 Hash new password
+    const hash = await bcrypt.hash(newPassword, BCRYPT_COST);
+
+    // 💾 Update password in DB
+    await db('staff_accounts')
+      .where('id', accountId)
+      .update({
+        password_hash: hash,
+        updated_at: new Date().toISOString()
+      });
+
+    // ✅ Log success
+    logger.info(`✅ Password successfully reset for ${sanitizedEmail}`);
+
+    // 📤 Redirect to login
+    res.send(`
+      <html>
+        <body style="text-align:center; padding:40px;">
+          <h2>Password Successfully Reset</h2>
+          <p>Your password has been updated successfully.</p>
+          <a href="/login" class="btn">Login with New Password</a>
+        </body>
+      </html>
+    `);
+
+  } catch (err) {
+    logger.error('Password reset error:', err.message);
+    next(new AppError('Password reset failed.', 500));
+  }
 });
 
 // 🔐 Staff Authentication Middleware
@@ -1432,52 +1353,74 @@ const requireStaffAuth = (req, res, next) => {
 // ✅ Change Password - GET
 app.get('/change-password', requireStaffAuth, (req, res) => {
   const token = res.locals.csrfToken;
-  const form = `
-    <form method="POST" action="/change-password">
-      <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
-      <input type="password" name="old_password" placeholder="Current Password" required />
-      <input type="password" name="new_password" placeholder="New Password" required />
-      <input type="password" name="confirm_password" placeholder="Confirm New Password" required />
-      <button type="submit">Update Password</button>
-    </form>
-  `;
-  res.send(form);
+  res.render('change-password', {
+    csrfToken: token,
+    cspNonce: res.locals.cspNonce
+  });
 });
 
 
 // ✅ Change Password - POST
 app.post('/change-password', requireStaffAuth, [
-  body('old_password').notEmpty().withMessage('Current password is required'),
-  body('new_password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('confirm_password').custom((value, { req }) => {
-    if (value !== req.body.new_password) throw new Error('Passwords do not match');
-    return true;
-  })
+  body('old_password').isString().notEmpty().withMessage('Current password is required'),
+  body('new_password')
+    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('confirm_password')
+    .custom((value, { req }) => {
+      if (value !== req.body.new_password) {
+        throw new Error('Passwords do not match');
+      }
+      return true;
+    })
 ], validateRequest, async (req, res, next) => {
-  const { old_password, new_password } = req.body;
-  const staffId = req.session.staffId;
-
   try {
-    const account = await db('staff_accounts').where('staff_id', staffId).first();
-    const isMatch = await bcrypt.compare(old_password, account.password_hash);
+    const { old_password, new_password } = req.body;
+    const staffId = req.session.staffId;
 
-    if (!isMatch) {
-      return res.status(400).json({ error: 'Current password is incorrect.' });
+    // Fetch account from DB
+    const account = await db('staff_accounts').where('staff_id', staffId).first();
+    if (!account) {
+      return res.status(404).send(`
+        <div style="text-align:center; padding:40px;">
+          <h2>Account Not Found</h2>
+          <p>Your session may have expired. Please log in again.</p>
+          <a href="/login" class="btn">Login Again</a>
+        </div>
+      `);
     }
 
+    // Validate current password
+    const isMatch = await bcrypt.compare(old_password, account.password_hash);
+    if (!isMatch) {
+      return res.status(400).render('change-password', {
+        csrfToken: res.locals.csrfToken,
+        cspNonce: res.locals.cspNonce,
+        error: 'Current password is incorrect'
+      });
+    }
+
+    // Hash and update new password
     const hash = await bcrypt.hash(new_password, BCRYPT_COST);
+
     await db('staff_accounts')
       .where('staff_id', staffId)
-      .update({ password_hash: hash, updated_at: new Date().toISOString() });
+      .update({
+        password_hash: hash,
+        updated_at: new Date().toISOString()
+      });
 
+    // Regenerate session after password change
     req.session.regenerate((err) => {
-      if (err) return next(new AppError('Session regeneration failed.', 500));
+      if (err) {
+        return next(new AppError('Session regeneration failed.', 500));
+      }
       req.session.staffId = account.staff_id;
       req.session.accountId = account.id;
       res.redirect('/staff-dashboard');
     });
 
   } catch (err) {
+    logger.error('Password change error:', err.message);
     next(new DatabaseError('Password change failed.'));
   }
 });
@@ -1773,75 +1716,22 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 });
 
 
-// ✅ Custom error for bad tokens
-// Replace the existing CSRF error handler with this simplified version
-app.use((err, req, res, next) => {
-  if (err.code === 'EBADCSRFTOKEN' || err.name === 'ForbiddenError') {
-    logger.warn('⚠️ CSRF validation failed:', err.message);
-    // Return JSON for API endpoints, otherwise redirect
-    const apiLike = req.path.startsWith('/initialize-payment') || req.path.startsWith('/webhook') || req.path.startsWith('/api/') || req.path.startsWith('/staff') || req.path.startsWith('/projects');
-    if (apiLike || (req.headers.accept && req.headers.accept.includes('application/json'))) {
-      return res.status(403).json({
-        error: {
-          name: 'ForbiddenError',
-          message: 'Invalid CSRF token. Please refresh and try again.'
-        }
-      });
-    }
-    return res.redirect('/login?error=Invalid%20CSRF%20token.%20Please%20refresh%20and%20try%20again.');
-  }
-  next(err);
-});
-
-// Then move this to the very end of your middleware chain:
-app.use((err, req, res, next) => {
-  // 🧠 Special proxy error
-  if (err.code === 'ERR_ERL_UNEXPECTED_X_FORWARDED_FOR') {
-    return res.status(500).json({
-      error: {
-        name: 'ProxyError',
-        message: 'Proxy configuration error',
-        details: 'Server is behind a proxy but not configured to trust it'
-      }
-    });
-  }
-
-  logger.error('❌ Global error handler:', err);
-
-  // Always return JSON for API endpoints
-  const apiLike = req.path.startsWith('/initialize-payment') || req.path.startsWith('/webhook') || req.path.startsWith('/api/') || req.path.startsWith('/staff') || req.path.startsWith('/projects');
-  if (apiLike || (req.headers.accept && req.headers.accept.includes('application/json'))) {
-    const status = err.status || 500;
-    const response = {
-      error: {
-        name: err.name || 'InternalError',
-        message: err.message || 'An unexpected error occurred'
-      }
-    };
-    if (process.env.NODE_ENV === 'development') {
-      response.error.stack = err.stack;
-    }
-    return res.status(status).json(response);
-  }
-
-  // Otherwise render fallback error page
-  res.status(500).render('error', {
-    cspNonce: res.locals.cspNonce,
-    message: 'An unexpected error occurred. Please try again later.'
-  });
-});
-
-
 // ✅ Index maintenance logic with locking
 let isMaintenanceRunning = false;
+
 async function runIndexMaintenance() {
+  if (isMaintenanceRunning) {
+    logger.info('🔄 Index maintenance already running, skipping...');
+    return;
+  }
+
   if (process.env.NODE_ENV === 'production') {
-    if (isMaintenanceRunning) return;
     isMaintenanceRunning = true;
     try {
       logger.info('🔄 Starting index maintenance...');
       await db.raw('ANALYZE donations');
       logger.info('✅ ANALYZE donations completed');
+
       const utcHours = new Date().getUTCHours();
       if (utcHours >= 1 && utcHours <= 4) {
         await db.raw('REINDEX TABLE donations');
@@ -1850,12 +1740,16 @@ async function runIndexMaintenance() {
     } catch (err) {
       logger.error('❌ Index maintenance failed:', err.message);
       if (process.env.SENDGRID_API_KEY && process.env.ADMIN_EMAIL) {
-        await sgMail.send({
-          to: process.env.ADMIN_EMAIL,
-          from: 'server@harvestcallafrica.org',
-          subject: 'Index Maintenance Failed',
-          text: `Error: ${err.message}`
-        });
+        try {
+          await sgMail.send({
+            to: process.env.ADMIN_EMAIL,
+            from: 'server@harvestcallafrica.org',
+            subject: 'Index Maintenance Failed',
+            text: `Error: ${err.message}`
+          });
+        } catch (emailErr) {
+          logger.warn('📧 Failed to send admin email:', emailErr.message);
+        }
       }
     } finally {
       isMaintenanceRunning = false;
@@ -1874,36 +1768,39 @@ async function startServer() {
     logger.info('🔧 Running initial index maintenance...');
     await runIndexMaintenance();
 
-    
     logger.info('🚀 Starting Express server...');
     app.listen(PORT, () => {
       logger.info(`✅ Server is running on port ${PORT}`);
+
+      // Run hourly index maintenance check
       setInterval(() => {
         const now = new Date();
         if (now.getUTCDay() === 0 && now.getUTCHours() === 2) {
           runIndexMaintenance();
         }
-      }, 60 * 60 * 1000);
+      }, 60 * 60 * 1000); // Every hour
     });
+
   } catch (err) {
     logger.error('❌ Failed to start server:', err);
     try {
       await notifyAdmin('Critical App Crash', err.stack);
     } catch (notifyErr) {
-      logger.warn('Failed to notify admin of startup failure.');
+      logger.warn('📧 Failed to notify admin of startup failure.', notifyErr.message);
     }
     process.exit(1);
   }
 }
 
-
+// ✅ Handle graceful shutdown
 process.on('SIGINT', async () => {
   try {
     await notifyAdmin('🔻 Server Shutdown', 'The server is shutting down via SIGINT.');
   } catch (e) {
-    logger.warn('Failed to notify admin of shutdown.');
+    logger.warn('⚠️ Failed to notify admin of shutdown.');
   }
   await db.destroy();
+  logger.info('🔌 Database connection closed.');
   process.exit(0);
 });
 

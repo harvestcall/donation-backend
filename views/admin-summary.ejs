@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Donation Summary Dashboard - Harvest Call Ministries</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <meta charset="UTF-8" />
+  <title>Donation Summary Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css " />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
   <style nonce="<%= cspNonce %>">
     :root {
       --primary: #003366;
@@ -15,19 +15,12 @@
       --text: #333333;
       --text-light: #6c757d;
       --border: #e0e0e0;
-      --success: #28a745;
-      --info: #17a2b8;
       --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-
     body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background-color: var(--light-bg);
       color: var(--text);
       line-height: 1.6;
@@ -39,7 +32,7 @@
       margin: 0 auto;
     }
 
-    .header, .footer {
+    .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -133,9 +126,10 @@
       color: var(--text-light);
     }
 
-    .recipients-table table {
+    table {
       width: 100%;
       border-collapse: collapse;
+      margin-bottom: 40px;
     }
 
     th, td {
@@ -149,30 +143,6 @@
       color: white;
     }
 
-    .recipient-name {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .recipient-icon {
-      background: var(--accent);
-      padding: 10px;
-      border-radius: 6px;
-      color: white;
-    }
-
-    .amount {
-      font-weight: 600;
-      color: var(--primary);
-    }
-
-    .footer {
-      justify-content: center;
-      font-size: 0.9rem;
-      color: var(--text-light);
-    }
-
     @media (max-width: 768px) {
       .kpi-cards {
         grid-template-columns: 1fr;
@@ -182,6 +152,8 @@
 </head>
 <body>
   <div class="dashboard-container">
+
+    <!-- Header -->
     <div class="header">
       <div class="logo-container">
         <div class="logo"><i class="fas fa-hands-helping"></i></div>
@@ -190,7 +162,9 @@
           <p>Harvest Call Ministries – Monthly Contributions Report</p>
         </div>
       </div>
-      <div class="admin-nav">
+      <div class="controls">
+        <a href="/admin/logout" class="btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        <a href="/admin/export/summary?month=<%= title %>&format=csv" class="btn"><i class="fas fa-file-csv"></i> Export CSV</a>
         <a href="/admin/staff" class="btn"><i class="fas fa-users"></i> Staff</a>
         <a href="/admin/projects" class="btn"><i class="fas fa-project-diagram"></i> Projects</a>
         <a href="/admin/assign-projects" class="btn"><i class="fas fa-tasks"></i> Assign Projects</a>
@@ -198,12 +172,14 @@
       </div>
     </div>
 
+    <!-- Month Navigation -->
     <div class="month-nav">
       <a href="/admin/summary?month=<%= prev %>" class="btn nav-btn"><i class="fas fa-chevron-left"></i></a>
       <div class="current-month"><%= title %></div>
       <a href="/admin/summary?month=<%= next %>" class="btn nav-btn"><i class="fas fa-chevron-right"></i></a>
     </div>
 
+    <!-- KPI Cards -->
     <div class="kpi-cards">
       <div class="kpi-card total">
         <div class="kpi-icon"><i class="fas fa-donate"></i></div>
@@ -231,36 +207,73 @@
       </div>
     </div>
 
-    <div class="recipients-table">
-      <h2><i class="fas fa-list"></i> Recipient Breakdown</h2>
-      <table>
-        <thead>
+    <!-- Recipient Table -->
+    <table>
+      <thead>
+        <tr>
+          <th>Recipient</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% Object.values(summary.records).forEach(r => { %>
           <tr>
-            <th>Recipient</th>
-            <th>Amount</th>
+            <td><%= r.label %></td>
+            <td>₦<%= r.total.toLocaleString() %></td>
           </tr>
-        </thead>
-        <tbody>
-          <% Object.values(summary.records).forEach(r => { %>
-            <tr>
-              <td>
-                <div class="recipient-name">
-                  <div class="recipient-icon">
-                    <i class="fas <%= r.label.includes('Staff') ? 'fa-user' : 'fa-project-diagram' %>"></i>
-                  </div>
-                  <div><%= r.label %></div>
-                </div>
-              </td>
-              <td class="amount">₦<%= r.total.toLocaleString() %></td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    </div>
+        <% }) %>
+      </tbody>
+    </table>
 
-    <div class="footer">
-      <p>Harvest Call Ministries • Generated on <%= new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) %></p>
-    </div>
+    <!-- Footer -->
+    <p style="margin-top: 30px; text-align: center;">
+      Generated on <%= new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) %>
+    </p>
+
+    <!-- Donation Chart -->
+    <canvas id="donationChart" width="800" height="400"></canvas>
+
+    <!-- Chart Script -->
+    <script>
+      const ctx = document.getElementById('donationChart').getContext('2d');
+      const labels = Object.keys(<%- JSON.stringify(summary.records) %>).map(k => summary.records[k].label);
+      const data = Object.keys(<%- JSON.stringify(summary.records) %>).map(k => summary.records[k].total);
+
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Donation Amount (₦)',
+            data: data,
+            backgroundColor: '#2E7D32'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return '₦' + parseInt(context.raw).toLocaleString();
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              ticks: {
+                callback: function(value) {
+                  return '₦' + value.toLocaleString();
+                }
+              }
+            }
+          }
+        }
+      });
+    </script>
+
   </div>
 </body>
 </html>

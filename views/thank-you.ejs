@@ -1,0 +1,14 @@
+<% if (amount && currency) { %>
+  <div class="details">
+    <p><strong>Amount:</strong> <%= currency === 'NGN' ? '₦' : '$' %><%= (amount).toLocaleString() %></p>
+    <p><strong>Type:</strong> 
+      <%= donationType === 'recurring' ? 'Recurring' : 'One-Time' %>
+    </p>
+    <p><strong>Purpose:</strong> 
+      <% if (purpose === 'staff') { %> Staff Support <% } %>
+      <% if (purpose === 'project') { %> Project Support <% } %>
+      <% if (purpose === 'general') { %> General Ministry <% } %>
+    </p>
+    <p><strong>Date:</strong> <%= new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) %></p>
+  </div>
+<% } %>
