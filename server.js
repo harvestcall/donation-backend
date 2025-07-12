@@ -94,6 +94,19 @@ app.use((req, res, next) => {
 });
 
 // ✅ Session middleware - MUST come before CSRF
+// Determine secure cookie options based on environment
+const sessionCookieOptions = {
+  path: '/',
+  httpOnly: true,
+  secure: isProduction, // Only send over HTTPS in production
+  sameSite: isProduction ? 'lax' : 'strict', // lax for general use, strict for sensitive actions
+  maxAge: 30 * 60 * 1000 // 30 minutes - reduce risk of session hijacking
+};
+
+if (!isProduction) {
+  sessionCookieOptions.secure = false; // Allow HTTP in development
+}
+
 app.use(session({
   name: '__Host-hc-session',
   store: new pgSession({
@@ -104,13 +117,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    path: '/',
-    secure: isProduction,
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-  }
+  cookie: sessionCookieOptions
 }));
 
 // ✅ Apply CSP headers after session middleware
@@ -465,9 +472,10 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
       reference: paymentData.reference,
       amount: paymentData.amount,
       currency: paymentData.currency,
-      meta JSON.stringify(safeMetadata),
+      meta: JSON.stringify(safeMetadata),
       created_at: new Date().toISOString()
     });
+
 
     // ✅ Log success
     const donorName = safeMetadata.donorName || 'Anonymous Supporter';
