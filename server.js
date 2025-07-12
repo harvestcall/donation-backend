@@ -27,6 +27,7 @@ const DOMPurify = require('dompurify')(window);
 const validator = require('validator');
 const { escapeHtml } = require('./utils/helpers');
 const { body, validationResult } = require('express-validator');
+const { body } = require('express-validator');
 
 // ✅ PostgreSQL pool
 const pgPool = new Pool({
@@ -311,6 +312,11 @@ function sanitizeEmail(input) {
   return validator.normalizeEmail(input || '', { gmail_remove_dots: false });
 }
 
+// Process Version Check to Avoid Future Issues
+if (process.versions.node.split('.')[0] < 18) {
+  throw new Error('Node.js version must be 18 or higher');
+}
+
 // ===== ROUTES START HERE ===== //
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 app.get('/csrf-test', (req, res) => {
@@ -361,7 +367,9 @@ app.get('/', (req, res, next) => {
 // ✅ Payment Initialization Route
 app.post('/initialize-payment', [
   body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
-  body('amount').isFloat({ min: 0.5 }).toFloat().withMessage('Amount must be at least ₦0.50'),
+  body('amount')
+  .isFloat({ min: 0.5 }).withMessage('Amount must be at least ₦0.50')
+  .toFloat(),
   body('currency').optional().isIn(['NGN', 'USD']).withMessage('Currency must be NGN or USD'),
   body('donationType').optional().isIn(['one-time', 'recurring']).withMessage('Invalid donation type'),
   body('purpose').optional().isIn(['general', 'staff', 'project']).withMessage('Invalid purpose selected'),
@@ -1270,8 +1278,15 @@ app.get('/reset-password', (req, res) => {
 
 // POST: Handle password reset form submission
 app.post('/reset-password', [
-  body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('confirmPassword').custom((value, { req }) => value === req.body.newPassword),
+  body('newPassword')
+    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('confirmPassword')
+    .custom((value, { req }) => {
+      if (value !== req.body.newPassword) {
+        throw new Error('Passwords do not match');
+      }
+      return true;
+    }).withMessage('Passwords do not match'),
 ], validateRequest, async (req, res, next) => {
   const { token, newPassword } = req.body;
 
