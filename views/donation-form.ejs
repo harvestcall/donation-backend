@@ -619,7 +619,9 @@
     <div class="donation-section">
       <h2 class="section-title">Make a Donation</h2>
       
-      <form id="donationForm" novalidate>
+      <!-- Form now uses standard POST submission -->
+      <form id="donationForm" method="POST" action="/donate" novalidate>
+        <!-- Critical CSRF token field -->
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         
         <div class="form-section">
@@ -627,8 +629,8 @@
             <i class="fas fa-globe-africa"></i> Select Currency
           </h3>
           <div class="currency-toggle">
-            <button class="currency-btn" data-currency="NGN">Nigerian Naira (₦)</button>
-            <button class="currency-btn active" data-currency="USD">US Dollars ($)</button>
+            <button type="button" class="currency-btn" data-currency="NGN">Nigerian Naira (₦)</button>
+            <button type="button" class="currency-btn active" data-currency="USD">US Dollars ($)</button>
           </div>
         </div>
         
@@ -637,8 +639,8 @@
             <i class="fas fa-calendar-alt"></i> Donation Type
           </h3>
           <div class="donation-type">
-            <button class="type-btn" data-type="one-time">One-Time Gift</button>
-            <button class="type-btn active" data-type="monthly">Monthly Support</button>
+            <button type="button" class="type-btn" data-type="one-time">One-Time Gift</button>
+            <button type="button" class="type-btn active" data-type="monthly">Monthly Support</button>
           </div>
         </div>
         
@@ -706,7 +708,7 @@
             </h3>
             <div class="custom-input-container">
               <div class="currency-symbol" id="currency-symbol">$</div>
-              <input type="number" id="custom-amount-input" placeholder="Enter other amount">
+              <input type="number" id="custom-amount-input" name="customAmount" placeholder="Enter other amount">
             </div>
           </div>
         </div>
@@ -718,8 +720,8 @@
               <i class="fas fa-hand-holding-heart"></i> Allocate Your Donation
             </h3>
             <div class="allocation-toggle">
-              <button class="allocation-btn active" data-type="staff">Staff Support</button>
-              <button class="allocation-btn" data-type="projects">Projects</button>
+              <button type="button" class="allocation-btn active" data-type="staff">Staff Support</button>
+              <button type="button" class="allocation-btn" data-type="projects">Projects</button>
             </div>
           </div>
           
@@ -757,7 +759,7 @@
             
             <div class="input-group">
               <label for="country">Country</label>
-              <select id="country" name="country">
+              <select id="country" name="country" required>
                 <option value="">Select Country</option>
                 <option value="Nigeria">Nigeria</option>
                 <option value="United States">United States</option>
@@ -1273,8 +1275,11 @@
       const email = document.getElementById('email').value.trim();
       const phone = document.getElementById('phone').value.trim();
       const country = document.getElementById('country').value;
-      const amount = document.querySelector('.amount-btn.active')?.dataset.amount || 
-                    document.getElementById('custom-amount-input').value;
+      const selectedAmountBtn = document.querySelector('.amount-btn.active');
+      const customAmount = document.getElementById('custom-amount-input').value;
+      
+      // Reset error state
+      errorContainer.style.display = 'none';
       
       if (!name) {
         showError('Please enter your full name');
@@ -1296,81 +1301,33 @@
         return false;
       }
       
-      if (!amount || amount <= 0) {
+      if (!selectedAmountBtn && !customAmount) {
         showError('Please select or enter a donation amount');
+        return false;
+      }
+      
+      if (customAmount && parseFloat(customAmount) <= 0) {
+        showError('Please enter a valid donation amount');
         return false;
       }
       
       return true;
     }
 
-    // Initialize donate button with payment functionality
-    function initDonateButton() {
-      donationForm.addEventListener('submit', async (e) => {
+    // Form submission handler
+    donationForm.addEventListener('submit', function(e) {
+      if (!validateForm()) {
         e.preventDefault();
-        
-        if (!validateForm()) return;
-        
-        const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
-        const type = document.querySelector('.type-btn.active')?.dataset.type;
-        const selectedAmountBtn = document.querySelector('.amount-btn.active');
-        const customAmount = document.getElementById('custom-amount-input')?.value;
-        
-        let amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
-        
-        // Prepare allocation data
-        let staffId = null;
-        let projectId = null;
-        
-        if (selectedAllocation) {
-          if (selectedAllocation.type === 'staff') {
-            staffId = selectedAllocation.id;
-          } else if (selectedAllocation.type === 'projects') {
-            projectId = selectedAllocation.id;
-          }
-        }
-        
-        // Prepare form data
-        const formData = new FormData(donationForm);
-        const data = Object.fromEntries(formData.entries());
-        data.amount = amount;
-        data.currency = currency;
-        data.donationType = type;
-        data.staffId = staffId;
-        data.projectId = projectId;
-        
-        try {
-          loadingIndicator.style.display = 'block';
-          errorContainer.style.display = 'none';
-          
-          const response = await fetch('/donate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-          });
-          
-          const result = await response.json();
-          
-          if (response.ok) {
-            if (result.redirectUrl) {
-              window.location.href = result.redirectUrl;
-            } else if (result.success) {
-              // Handle successful donation without redirect
-              alert('Donation successful! Thank you for your support.');
-              donationForm.reset();
-            }
-          } else {
-            showError(result.message || 'Payment initialization failed. Please try again.');
-          }
-        } catch (error) {
-          showError('An error occurred while processing your payment. Please try again.');
-        } finally {
-          loadingIndicator.style.display = 'none';
-        }
-      });
-    }
+        return;
+      }
+      
+      // Show processing state
+      loadingIndicator.style.display = 'block';
+      errorContainer.style.display = 'none';
+      
+      // Form will submit normally via browser
+      this.submit();
+    });
 
     // Initialize everything when DOM is loaded
     document.addEventListener('DOMContentLoaded', () => {
@@ -1378,7 +1335,6 @@
       initDonationType();
       initAmountSelection();
       initAllocation();
-      initDonateButton();
       
       // Fetch allocation data
       fetchAllocationData();
