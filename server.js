@@ -27,7 +27,7 @@ const DOMPurify = require('dompurify')(window);
 const validator = require('validator');
 const { escapeHtml } = require('./utils/helpers');
 const { body, validationResult } = require('express-validator');
-const { body } = require('express-validator');
+
 
 // ✅ PostgreSQL pool
 const pgPool = new Pool({
