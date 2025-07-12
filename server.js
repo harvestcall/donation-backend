@@ -56,9 +56,6 @@ class NotFoundError extends AppError {
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
 
-function getSessionIdentifier(req) {
-  return req.session && req.sessionID ? req.sessionID : 'fallback-secret';
-}
 
 const finalOptions = {
   ...options,
@@ -68,7 +65,6 @@ const finalOptions = {
     }
     return req.session.csrfSecret;
   },
-  getSessionIdentifier: getSessionIdentifier,
   cookieOptions: {
     httpOnly: false,
     sameSite: 'lax',
@@ -1749,8 +1745,6 @@ async function runIndexMaintenance() {
 }
 
 // ✅ Server startup
-const PORT = process.env.PORT || 5000;
-
 async function startServer() {
   try {
     logger.info('⏳ Initializing database...');
