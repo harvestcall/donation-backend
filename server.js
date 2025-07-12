@@ -174,21 +174,21 @@ app.use((req, res, next) => {
   try {
     if (!req.sessionID) {
       logger.warn('⚠️ No session ID available when generating CSRF token');
-    } else {
-      logger.info(`🔐 Generating CSRF token for session: ${req.sessionID}`);
+      return next();
     }
 
-    if (req.sessionID) {
-      const token = generateToken(req, res);
-      res.locals.csrfToken = token;
-      res.cookie(csrfCookieName, token, {
-        httpOnly: false,
-        sameSite: 'lax',
-        secure: isProduction,
-        path: '/',
-        maxAge: 1000 * 60 * 15
-      });
-    }
+    logger.info(`🔐 Generating CSRF token for session: ${req.sessionID}`);
+
+    const token = req.csrfToken(); // ✅ Use built-in method
+    res.locals.csrfToken = token;
+
+    res.cookie(csrfCookieName, token, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: isProduction,
+      path: '/',
+      maxAge: 1000 * 60 * 15
+    });
 
     next();
   } catch (err) {
