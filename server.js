@@ -360,7 +360,7 @@ app.get('/', (req, res, next) => {
 
 // ✅ Payment Initialization Route
 app.post('/initialize-payment', [
-  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
   body('amount').isFloat({ min: 0.5 }).toFloat().withMessage('Amount must be at least ₦0.50'),
   body('currency').optional().isIn(['NGN', 'USD']).withMessage('Currency must be NGN or USD'),
   body('donationType').optional().isIn(['one-time', 'recurring']).withMessage('Invalid donation type'),
@@ -977,7 +977,7 @@ app.post('/admin/add-staff-account',
   requireAuth,
   [
     body('name').isString().trim().notEmpty().withMessage('Name is required'),
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long')
   ],
   validateRequest,
@@ -1121,7 +1121,7 @@ app.post(
   },
   loginLimiter,
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
   validateRequest,
