@@ -1740,6 +1740,14 @@ app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => 
 }
 });
 
+app.get('/debug/session', (req, res) => {
+  res.json({
+    sessionID: req.sessionID,
+    session: req.session,
+    cookies: req.cookies,
+    signedCookies: req.signedCookies
+  });
+});
 
 // ✅ Index maintenance logic with locking
 let isMaintenanceRunning = false;
