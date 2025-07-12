@@ -27,6 +27,7 @@ const DOMPurify = require('dompurify')(window);
 const validator = require('validator');
 const { escapeHtml } = require('./utils/helpers');
 const { body, validationResult } = require('express-validator');
+const { buildThankYouEmail } = require('./utils/emailTemplates');
 
 
 // ✅ PostgreSQL pool
@@ -339,6 +340,10 @@ function sanitizeEmail(input) {
   return validator.normalizeEmail(input || '', { gmail_remove_dots: false });
 }
 
+function escapeHtml(text) {
+  return validator.escape(DOMPurify.sanitize(text));
+}
+
 // Process Version Check to Avoid Future Issues
 if (process.versions.node.split('.')[0] < 18) {
   throw new Error('Node.js version must be 18 or higher');
@@ -515,45 +520,74 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
       created_at: new Date().toISOString()
     });
 
-
     // ✅ Log success
     const donorName = safeMetadata.donorName || 'Anonymous Supporter';
     logger.info(`✅ Verified Payment: ${paymentData.reference} | Donor: ${donorName}`);
 
-    // ✅ Send thank-you email
+    // 🛡️ Initialize variables
+    let purposeText = 'General Donation';
+    let staffName = null;
+    let projectName = null;
+
+    // 🧠 Safely extract and validate staffId/projectId from metadata
+    if (safeMetadata.staffId && typeof safeMetadata.staffId === 'string' && /^\d+$/.test(safeMetadata.staffId.trim())) {
+      staffName = await getDisplayName('staff', parseInt(safeMetadata.staffId.trim(), 10), db);
+    }
+
+    if (safeMetadata.projectId && typeof safeMetadata.projectId === 'string' && /^\d+$/.test(safeMetadata.projectId.trim())) {
+      projectName = await getDisplayName('projects', parseInt(safeMetadata.projectId.trim(), 10), db);
+    }
+
+    // 🎯 Build dynamic purpose text based on context
+    if (staffName && projectName) {
+      purposeText = `Staff + Project Support -- ${staffName} & ${projectName}`;
+    } else if (staffName) {
+      purposeText = `Staff Support -- ${staffName}`;
+    } else if (projectName) {
+      purposeText = `Project Support -- ${projectName}`;
+    } else {
+      logger.warn('❌ No valid staffId or projectId in metadata.');
+    }
+
+    // 📅 Format date for email
+    const donationDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC'
+    });
+
+    // 💰 Format amount for display
     const formattedAmount = new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: paymentData.currency
+      currency: paymentData.currency || 'NGN',
+      minimumFractionDigits: 2
     }).format(paymentData.amount / 100);
 
-    const purposeText = safeMetadata.purpose === 'staff' ? 'Staff Support' :
-                        safeMetadata.purpose === 'project' ? 'Project Support' : 'General Ministry';
+    // 👤 Sanitize donor name
+    const sanitizedDonorName = DOMPurify.sanitize(validator.escape(donorName));
+    const donorFirstName = sanitizedDonorName.split(' ')[0] || 'Friend';
 
+    // 📨 Send beautiful, styled thank-you email
     if (process.env.SENDGRID_API_KEY) {
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+      const htmlContent = buildThankYouEmail({
+        donorFirstName,
+        formattedAmount,
+        paymentReference: paymentData.reference,
+        purposeText,
+        donationDate
+      });
+
       await sgMail.send({
         to: sanitizedEmail,
         from: { name: 'Harvest Call Ministries', email: 'giving@harvestcallafrica.org' },
-        subject: `Thank You, ${donorName}! Your Donation Has Been Received`,
-        html: `
-          <html>
-            <body style="font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px;">
-              <div style="background: white; border-left: 6px solid #003366; padding: 20px; max-width: 600px; margin: auto; border-radius: 8px;">
-                <h2 style="color: #003366;">Thank You for Your Generosity</h2>
-                <p>We're incredibly grateful for your support.</p>
-                <p><strong>Donated:</strong> ${formattedAmount}</p>
-                <p><strong>Purpose:</strong> ${purposeText}</p>
-                <p>Your gift helps indigenous missionaries reach unreached communities across Africa.</p>
-                <p style="margin-top: 20px;"><a href="https://harvestcallafrica.org " style="color: #003366;">Visit Our Website</a></p>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-                <p style="font-size: 12px; color: #6c757d;">You're receiving this because you made a donation to Harvest Call Ministries.</p>
-              </div>
-            </body>
-          </html>
-        `
+        subject: `Thank You, ${donorFirstName}! Your Generosity is Making a Difference`,
+        html: htmlContent
       });
 
-      logger.info(`📧 Thank-you email sent to ${sanitizedEmail}`);
+      logger.info(`📧 Beautiful thank-you email sent to ${sanitizedEmail}`);
     }
 
     res.status(200).json({ status: 'success' });
