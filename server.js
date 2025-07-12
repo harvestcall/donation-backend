@@ -21,7 +21,9 @@ const { notifyAdmin } = require('./utils/alerts');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const cookieParser = require('cookie-parser');
-const DOMPurify = require('dompurify') (require('jsdom').JSDOM('').window);
+const { JSDOM } = require('jsdom');
+const window = new JSDOM('').window;
+const DOMPurify = require('dompurify')(window);
 const validator = require('validator');
 const { escapeHtml } = require('./utils/helpers');
 
