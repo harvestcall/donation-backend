@@ -373,7 +373,12 @@ app.post('/initialize-payment', [
   body('currency').optional().isIn(['NGN', 'USD']).withMessage('Currency must be NGN or USD'),
   body('donationType').optional().isIn(['one-time', 'recurring']).withMessage('Invalid donation type'),
   body('purpose').optional().isIn(['general', 'staff', 'project']).withMessage('Invalid purpose selected'),
-  body('name').optional().trim().escape().withMessage('Invalid name format')
+  body('name')
+  .optional()
+  .trim()
+  .escape()
+  .isAlpha("en-US", { ignore: " " })
+  .withMessage('Name must contain only letters and spaces')
 ], validateRequest, csrfLimiter, async (req, res) => {
   try {
     const { email, amount, currency = 'NGN', donationType = 'one-time', purpose = 'general' } = req.body;
