@@ -148,6 +148,48 @@ app.use((req, res, next) => {
   })(req, res, next);
 });
 
+// ✅ Apply doubleCsrfProtection after session and CSP
+app.use(doubleCsrfProtection);
+
+// ✅ Ensure CSRF token is available in locals
+app.use((req, res, next) => {
+  try {
+    // Ensure session exists
+    if (!req.sessionID) {
+      logger.warn('⚠️ No session ID available when generating CSRF token');
+      return next();
+    }
+
+    // Optional: Set session secret if needed
+    if (!req.session.csrfSecret) {
+      req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+    }
+
+    // Only expose token if session exists
+    if (typeof req.csrfToken === 'function') {
+      const token = req.csrfToken();
+      res.locals.csrfToken = token;
+
+      res.cookie(csrfCookieName, token, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: isProduction,
+        path: '/',
+        maxAge: 1000 * 60 * 15
+      });
+    } else {
+      logger.warn('⚠️ req.csrfToken is not available yet');
+    }
+
+    next();
+  } catch (err) {
+    logger.error('❌ Critical CSRF token error:', err.message);
+    logger.debug('Request session:', req.session);
+    logger.debug('Session ID:', req.sessionID);
+    next(new AppError('CSRF token generation failed', 500));
+  }
+});
+
 // ✅ CORS Configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL,
@@ -166,38 +208,7 @@ app.use(bodyParser.json({
 }));
 app.use(cookieParser());
 
-// ✅ Apply doubleCsrfProtection after session and CSP
-app.use(doubleCsrfProtection);
 
-// ✅ Ensure CSRF token is available in locals
-app.use((req, res, next) => {
-  try {
-    if (!req.sessionID) {
-      logger.warn('⚠️ No session ID available when generating CSRF token');
-      return next();
-    }
-
-    logger.info(`🔐 Generating CSRF token for session: ${req.sessionID}`);
-
-    const token = req.csrfToken(); // ✅ Use built-in method
-    res.locals.csrfToken = token;
-
-    res.cookie(csrfCookieName, token, {
-      httpOnly: false,
-      sameSite: 'lax',
-      secure: isProduction,
-      path: '/',
-      maxAge: 1000 * 60 * 15
-    });
-
-    next();
-  } catch (err) {
-    logger.error('❌ Critical CSRF token error:', err.message);
-    logger.debug('Request session:', req.session);
-    logger.debug('Session ID:', req.sessionID);
-    next(new AppError('CSRF token generation failed', 500));
-  }
-});
 
 // ✅ Environment validation
 const requiredEnvVars = [

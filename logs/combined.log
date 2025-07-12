@@ -576,3 +576,32 @@
 {"level":"info","message":"👥 Staff records: 5","timestamp":"2025-07-12T11:46:13.761Z"}
 {"level":"info","message":"🚀 Server running on port 3000","timestamp":"2025-07-12T11:46:13.763Z"}
 {"level":"info","message":"🔌 Database connection closed.","timestamp":"2025-07-12T11:51:17.065Z"}
+{"level":"info","message":"🛠 Using DB: undefined","timestamp":"2025-07-12T11:51:26.415Z"}
+{"level":"info","message":"🌍 Environment: production","timestamp":"2025-07-12T11:51:26.416Z"}
+{"level":"info","message":"🔒 Bcrypt cost: 12","timestamp":"2025-07-12T11:51:26.416Z"}
+{"level":"info","message":"⏳ Initializing database...","timestamp":"2025-07-12T11:51:26.425Z"}
+{"level":"info","message":"📦 Migrations completed","timestamp":"2025-07-12T11:51:32.010Z"}
+{"level":"info","message":"👥 Staff records: 5","timestamp":"2025-07-12T11:51:32.284Z"}
+{"level":"info","message":"🚀 Server running on port 3000","timestamp":"2025-07-12T11:51:32.288Z"}
+{"level":"info","message":"📦 Migrations completed","timestamp":"2025-07-12T11:51:34.129Z"}
+{"level":"info","message":"👥 Staff records: 5","timestamp":"2025-07-12T11:51:34.417Z"}
+{"level":"info","message":"🔧 Running initial index maintenance...","timestamp":"2025-07-12T11:51:34.418Z"}
+{"level":"info","message":"🔄 Starting index maintenance...","timestamp":"2025-07-12T11:51:34.418Z"}
+{"level":"info","message":"✅ ANALYZE donations completed","timestamp":"2025-07-12T11:51:34.682Z"}
+{"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-12T11:51:34.683Z"}
+{"level":"info","message":"✅ Server is running on port 3000","timestamp":"2025-07-12T11:51:34.684Z"}
+{"level":"info","message":"🔌 Database connection closed.","timestamp":"2025-07-12T12:13:04.752Z"}
+{"level":"info","message":"🛠 Using DB: undefined","timestamp":"2025-07-12T12:13:17.077Z"}
+{"level":"info","message":"🌍 Environment: production","timestamp":"2025-07-12T12:13:17.079Z"}
+{"level":"info","message":"🔒 Bcrypt cost: 12","timestamp":"2025-07-12T12:13:17.079Z"}
+{"level":"info","message":"⏳ Initializing database...","timestamp":"2025-07-12T12:13:17.090Z"}
+{"level":"info","message":"📦 Migrations completed","timestamp":"2025-07-12T12:13:22.855Z"}
+{"level":"info","message":"👥 Staff records: 5","timestamp":"2025-07-12T12:13:23.122Z"}
+{"level":"info","message":"🚀 Server running on port 3000","timestamp":"2025-07-12T12:13:23.125Z"}
+{"level":"info","message":"📦 Migrations completed","timestamp":"2025-07-12T12:13:24.789Z"}
+{"level":"info","message":"👥 Staff records: 5","timestamp":"2025-07-12T12:13:25.056Z"}
+{"level":"info","message":"🔧 Running initial index maintenance...","timestamp":"2025-07-12T12:13:25.057Z"}
+{"level":"info","message":"🔄 Starting index maintenance...","timestamp":"2025-07-12T12:13:25.058Z"}
+{"level":"info","message":"✅ ANALYZE donations completed","timestamp":"2025-07-12T12:13:25.371Z"}
+{"level":"info","message":"🚀 Starting Express server...","timestamp":"2025-07-12T12:13:25.372Z"}
+{"level":"info","message":"✅ Server is running on port 3000","timestamp":"2025-07-12T12:13:25.373Z"}
