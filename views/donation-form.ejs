@@ -1256,9 +1256,9 @@
         </div>
     </div>
 
-    <script>
-        // Set API URL from environment variable
-        const API_URL = '<%= API_URL %>' || 'http://localhost:5000';
+    <script nonce="<%= cspNonce %>">
+        const FRONTEND_BASE_URL = '<%= FRONTEND_BASE_URL %>';
+        const API_URL = '<%= API_URL %>' || '<%= FRONTEND_BASE_URL %>';
 
         // Current allocation type
         let currentAllocationType = 'staff';

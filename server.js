@@ -401,7 +401,8 @@ app.get('/', (req, res, next) => {
   res.render('donation-form', {
     cspNonce: res.locals.cspNonce,
     csrfToken: res.locals.csrfToken,
-    FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL
+    FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL,
+    API_URL: process.env.API_URL || process.env.FRONTEND_BASE_URL
   });
 });
 
