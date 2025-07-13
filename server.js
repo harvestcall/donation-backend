@@ -1,6 +1,7 @@
 // ✅ Load environment variables
 require('dotenv').config();
 
+
 // ✅ Core dependencies
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -30,13 +31,17 @@ const { body, validationResult } = require('express-validator');
 const { buildThankYouEmail } = require('./utils/emailTemplates');
 
 
+
+
 // ✅ PostgreSQL pool
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-const isProduction = process.env.NODE_ENV === 'production'; // For secure settings
+
+const isProduction = process.env.NODE_ENV === 'production';
+
 
 // ✅ Custom error classes
 class AppError extends Error {
@@ -46,47 +51,31 @@ class AppError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+
 class DatabaseError extends AppError {
   constructor(message) {
     super(message || 'Database operation failed', 500);
   }
 }
+
+
 class NotFoundError extends AppError {
   constructor(message) {
     super(message || 'Resource not found', 404);
   }
 }
 
-// ✅ Double Csrf Options
-const { doubleCsrf } = require('csrf-csrf');
-const { csrfCookieName, options } = require('./config/csrf-config');
 
-
-const finalOptions = {
-  ...options,
-  getSecret: (req) => {
-    if (!req.session.csrfSecret) {
-      req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
-    }
-    return req.session.csrfSecret;
-  },
-  cookieOptions: {
-    httpOnly: false,
-    sameSite: 'lax',
-    secure: isProduction,
-    maxAge: 1000 * 60 * 15 // 15 minutes
-  }
-};
-
-const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
-
-// ✅ Initialize Express app
+// ✅ Express app setup
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 
 app.set('trust proxy', true); // Trust Render.com proxies
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
 
 // ✅ Generate CSP nonce per request
 app.use((req, res, next) => {
@@ -94,19 +83,21 @@ app.use((req, res, next) => {
   next();
 });
 
+
 // ✅ Session middleware - MUST come before CSRF
-// Determine secure cookie options based on environment
 const sessionCookieOptions = {
   path: '/',
   httpOnly: true,
-  secure: isProduction, // Only send over HTTPS in production
-  sameSite: isProduction ? 'lax' : 'strict', // lax for general use, strict for sensitive actions
-  maxAge: 30 * 60 * 1000 // 30 minutes - reduce risk of session hijacking
+  secure: isProduction,
+  sameSite: isProduction ? 'lax' : 'strict',
+  maxAge: 30 * 60 * 1000 // 30 minutes
 };
+
 
 if (!isProduction) {
   sessionCookieOptions.secure = false; // Allow HTTP in development
 }
+
 
 app.use(session({
   name: '__Host-hc-session',
@@ -121,38 +112,57 @@ app.use(session({
   cookie: sessionCookieOptions
 }));
 
-// ✅ Apply CSP headers after session middleware
+
+// ✅ Content Security Policy middleware
 app.use((req, res, next) => {
-  helmet.contentSecurityPolicy({
-    useDefaults: false,
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: [
-        "'self'",
-        `'nonce-${res.locals.cspNonce}'`,
-        "https://fonts.googleapis.com ",
-        "https://cdnjs.cloudflare.com "
-      ],
-      scriptSrc: [
-        "'self'",
-        `'nonce-${res.locals.cspNonce}'`,
-        "https://cdnjs.cloudflare.com "
-      ],
-      fontSrc: [
-        "'self'",
-        "https://fonts.gstatic.com ",
-        "https://cdnjs.cloudflare.com "
-      ],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", "https://api.paystack.co "]
-    }
-  })(req, res, next);
+  const cspDirectives = {
+    'default-src': "'self'",
+    'script-src': `'self' 'nonce-${res.locals.cspNonce}' https://cdnjs.cloudflare.com `,
+    'style-src': `'self' 'unsafe-inline' https://cdnjs.cloudflare.com `,
+    'img-src': `'self' data: https:`,
+    'connect-src': "'self'",
+    'font-src': `'self' https: data:`,
+    'object-src': "'none'",
+    'media-src': "'self'"
+  };
+
+
+  let cspHeaderValue = Object.entries(cspDirectives)
+    .map(([key, value]) => `${key} ${value}`).join('; ');
+
+
+  res.setHeader('Content-Security-Policy', cspHeaderValue);
+  next();
 });
 
-// ✅ Apply doubleCsrfProtection after session and CSP
+
+// ✅ doubleCsrf setup
+const csrfCookieName = 'XSRF-TOKEN';
+
+
+const finalOptions = {
+  getSecret: (req) => {
+    if (!req.session.csrfSecret) {
+      req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+    }
+    return req.session.csrfSecret;
+  },
+  cookieOptions: {
+    httpOnly: false,
+    sameSite: 'lax',
+    secure: isProduction,
+    maxAge: 1000 * 60 * 15
+  }
+};
+
+
+const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
+
+
 app.use(doubleCsrfProtection);
 
-// ✅ Ensure CSRF token is available in locals
+
+// ✅ Safe CSRF token exposure middleware
 app.use((req, res, next) => {
   try {
     // Ensure session exists
@@ -161,26 +171,31 @@ app.use((req, res, next) => {
       return next();
     }
 
-    // Optional: Set session secret if needed
+
+    // Generate csrfSecret if not present
     if (!req.session.csrfSecret) {
       req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
     }
 
-    // Only expose token if session exists
+
+    // Only expose token if function exists
     if (typeof req.csrfToken === 'function') {
-      const token = req.csrfToken();
+      const token = req.csrfToken(); // Safe to call now
       res.locals.csrfToken = token;
 
+
+      // Set CSRF cookie for client-side use
       res.cookie(csrfCookieName, token, {
         httpOnly: false,
         sameSite: 'lax',
         secure: isProduction,
         path: '/',
-        maxAge: 1000 * 60 * 15
+        maxAge: 1000 * 60 * 15 // 15 minutes
       });
     } else {
-      logger.warn('⚠️ req.csrfToken is not available yet');
+      logger.warn('⚠️ req.csrfToken is not available yet – skipping token assignment');
     }
+
 
     next();
   } catch (err) {
@@ -191,6 +206,9 @@ app.use((req, res, next) => {
   }
 });
 
+
+
+
 // ✅ CORS Configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL,
@@ -198,6 +216,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   credentials: true
 }));
+
 
 // ✅ Static files + body parsers
 app.use(express.static(path.join(__dirname, 'public')));
@@ -211,6 +230,9 @@ app.use(cookieParser());
 
 
 
+
+
+
 // ✅ Environment validation
 const requiredEnvVars = [
   'PAYSTACK_SECRET_KEY',
@@ -219,10 +241,12 @@ const requiredEnvVars = [
   'SENDGRID_API_KEY'
 ];
 
+
 const missingVars = requiredEnvVars.filter(env => !process.env[env]);
 if (missingVars.length > 0) {
   throw new Error(`❌ Critical ENV variables missing: ${missingVars.join(', ')}`);
 }
+
 
 // ✅ Rate Limiters
 const paymentLimiter = rateLimit({
@@ -231,11 +255,13 @@ const paymentLimiter = rateLimit({
   message: 'Too many payment requests from this IP'
 });
 
+
 const webhookLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 100,
   message: 'Too many webhook requests'
 });
+
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -243,11 +269,14 @@ const loginLimiter = rateLimit({
   message: 'Too many login attempts'
 });
 
+
 const csrfLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   message: 'Too many CSRF requests from this IP'
 });
+
+
 
 
 // ✅ Paystack webhook verification
@@ -259,18 +288,23 @@ const verifyPaystackWebhook = (req, res, next) => {
 };
 
 
+
+
 const sanitizeHeader = str => typeof str === 'string'
   ? str.replace(/[\r\n]/g, '')
   : '';
+
 
 // ✅ Database connection (Knex)
 const db = require('./db');
 logger.info(`🛠 Using DB: ${db.client.config.connection.host}`);
 logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 
+
 // ✅ Bcrypt configuration
 const BCRYPT_COST = Math.min(Math.max(parseInt(process.env.BCRYPT_COST) || 8, 8), 12);
 logger.info(`🔒 Bcrypt cost: ${BCRYPT_COST}`);
+
 
 // ✅ Joi validation schema
 const metadataSchema = Joi.object({
@@ -279,6 +313,7 @@ const metadataSchema = Joi.object({
   donorName: Joi.string().optional(),
   donationType: Joi.string().valid('one-time', 'recurring').optional()
 });
+
 
 // ✅ Request validation helper
 const validateRequest = (req, res, next) => {
@@ -289,12 +324,14 @@ const validateRequest = (req, res, next) => {
   next();
 };
 
+
 // ✅ Display name helper
 async function getDisplayName(type, id, db) {
   const table = type === 'staff' ? 'staff' : 'projects';
   const result = await db(table).where('id', parseInt(id)).first();
   return result ? result.name : null;
 }
+
 
 // ✅ Auth middleware
 const requireAuth = (req, res, next) => {
@@ -305,6 +342,7 @@ const requireAuth = (req, res, next) => {
       .send('Authentication required.');
   }
 
+
   const base64Credentials = auth.split(' ')[1];
   let credentials;
   try {
@@ -313,43 +351,52 @@ const requireAuth = (req, res, next) => {
     return res.status(400).send('Invalid authorization format.');
   }
 
+
   const [username, password] = credentials.split(':');
   if (!username || !password) {
     return res.status(400).send('Missing username or password.');
   }
 
+
   if (username === process.env.DASHBOARD_USER && password === process.env.DASHBOARD_PASS) {
     return next();
   }
 
+
   return res.status(401).send('Access denied.');
 };
+
 
 // Sanitize and escape strings for safe HTML display
 function sanitizeHtml(input) {
   return DOMPurify.sanitize(validator.escape(input || ''));
 }
 
+
 // Sanitize and trim strings for general text inputs
 function sanitizeText(input) {
   return validator.trim(input || '');
 }
+
 
 // Sanitize and normalize emails
 function sanitizeEmail(input) {
   return validator.normalizeEmail(input || '', { gmail_remove_dots: false });
 }
 
+
 // Process Version Check to Avoid Future Issues
 if (process.versions.node.split('.')[0] < 18) {
   throw new Error('Node.js version must be 18 or higher');
 }
+
 
 // ===== ROUTES START HERE ===== //
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 app.get('/csrf-test', (req, res) => {
   res.send(`Your CSRF token is: ${res.locals.csrfToken}`);
 });
+
 
 // ✅ Database initialization
 async function initializeDatabase() {
@@ -363,6 +410,7 @@ async function initializeDatabase() {
     notifyAdmin(`Database initialization failed: ${err.message}`);
   }
 }
+
 
 // ✅ Start server
 initializeDatabase().then(() => {
