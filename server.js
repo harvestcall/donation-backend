@@ -30,7 +30,7 @@ const { escapeHtml } = require('./utils/helpers');
 const { body, validationResult } = require('express-validator');
 const { buildThankYouEmail } = require('./utils/emailTemplates');
 const { doubleCsrf } = require('csrf-csrf');
-
+const { csrfCookieName, options } = require('./config/csrf-config');
 
 
 
@@ -142,20 +142,14 @@ const csrfCookieName = 'XSRF-TOKEN';
 
 
 const finalOptions = {
+  ...options,
   getSecret: (req) => {
     if (!req.session.csrfSecret) {
       req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
     }
     return req.session.csrfSecret;
-  },
-  cookieOptions: {
-    httpOnly: false,
-    sameSite: 'lax',
-    secure: isProduction,
-    maxAge: 1000 * 60 * 15
   }
 };
-
 
 const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
 
