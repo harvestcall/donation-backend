@@ -374,6 +374,10 @@ app.get('/csrf-test', (req, res) => {
   res.send(`Your CSRF token is: ${res.locals.csrfToken}`);
 });
 
+app.get('/csrf-test', (req, res) => {
+  const token = res.locals.csrfToken;
+  res.send(`CSRF token set in cookie: ${token}`);
+});
 
 // ✅ Database initialization
 async function initializeDatabase() {

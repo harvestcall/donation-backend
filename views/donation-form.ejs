@@ -1650,22 +1650,43 @@
         }
 
         // Initialize everything when DOM is loaded
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+         try {
+            await fetchCsrfToken(); // Ensures CSRF cookie is set before any POST
+            } catch (err) {
+            console.error('Failed during CSRF initialization:', err);
+        // Optionally show warning to user or disable donate button
+    }
+
+        // Initialize UI components
             initCurrency();
             initDonationType();
             initAmountSelection();
             initAllocation();
             initDonateButton();
-            
-            // Fetch allocation data
+
+        // Fetch allocation data
             fetchAllocationData();
-            
-            // Clear errors on input
+
+        // Clear errors on input
             document.getElementById('full-name').addEventListener('input', () => clearError('name'));
             document.getElementById('email').addEventListener('input', () => clearError('email'));
             document.getElementById('phone').addEventListener('input', () => clearError('phone'));
             document.getElementById('custom-amount-input').addEventListener('input', () => clearError('amount'));
+    });
+        // Fetch CSRF token before donation
+        async function fetchCsrfToken() {
+         try {
+            const res = await fetch(`${API_URL}/csrf-test`, {
+            method: 'GET',
+            credentials: 'include'
         });
+            await res.text(); // Just to ensure the cookie is received
+            console.log('✅ CSRF token fetched and cookie set');
+            } catch (error) {
+            console.warn('⚠️ Failed to fetch CSRF token:', error.message);
+      }
+    }
     </script>
 </body>
 </html>
