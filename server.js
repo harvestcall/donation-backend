@@ -137,10 +137,6 @@ app.use((req, res, next) => {
 });
 
 
-// ✅ doubleCsrf setup
-const csrfCookieName = 'XSRF-TOKEN';
-
-
 const finalOptions = {
   ...options,
   getSecret: (req) => {
