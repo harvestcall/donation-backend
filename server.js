@@ -156,37 +156,32 @@ app.use(doubleCsrfProtection);
 // ✅ Safe CSRF token exposure middleware
 app.use((req, res, next) => {
   try {
-    // Ensure session exists
-    if (!req.sessionID) {
-      logger.warn('⚠️ No session ID available when generating CSRF token');
+    if (!req.sessionID || !req.session) {
+      logger.warn('⚠️ No session or sessionID – skipping CSRF token generation');
       return next();
     }
 
-
-    // Generate csrfSecret if not present
     if (!req.session.csrfSecret) {
       req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
     }
 
-
-    // Only expose token if function exists
     if (typeof req.csrfToken === 'function') {
-      const token = req.csrfToken(); // Safe to call now
-      res.locals.csrfToken = token;
-
-
-      // Set CSRF cookie for client-side use
-      res.cookie(csrfCookieName, token, {
-        httpOnly: false,
-        sameSite: 'lax',
-        secure: isProduction,
-        path: '/',
-        maxAge: 1000 * 60 * 15 // 15 minutes
-      });
+      try {
+        const token = req.csrfToken();
+        res.locals.csrfToken = token;
+        res.cookie(csrfCookieName, token, {
+          httpOnly: false,
+          sameSite: 'lax',
+          secure: isProduction,
+          path: '/',
+          maxAge: 1000 * 60 * 15
+        });
+      } catch (tokenErr) {
+        logger.warn('⚠️ req.csrfToken() failed internally:', tokenErr.message);
+      }
     } else {
       logger.warn('⚠️ req.csrfToken is not available yet – skipping token assignment');
     }
-
 
     next();
   } catch (err) {
@@ -196,8 +191,6 @@ app.use((req, res, next) => {
     next(new AppError('CSRF token generation failed', 500));
   }
 });
-
-
 
 
 // ✅ CORS Configuration
