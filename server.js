@@ -340,10 +340,6 @@ function sanitizeEmail(input) {
   return validator.normalizeEmail(input || '', { gmail_remove_dots: false });
 }
 
-function escapeHtml(text) {
-  return validator.escape(DOMPurify.sanitize(text));
-}
-
 // Process Version Check to Avoid Future Issues
 if (process.versions.node.split('.')[0] < 18) {
   throw new Error('Node.js version must be 18 or higher');
