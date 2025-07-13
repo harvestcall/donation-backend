@@ -29,6 +29,7 @@ const validator = require('validator');
 const { escapeHtml } = require('./utils/helpers');
 const { body, validationResult } = require('express-validator');
 const { buildThankYouEmail } = require('./utils/emailTemplates');
+const { doubleCsrf } = require('csrf-csrf');
 
 
 
@@ -229,10 +230,6 @@ app.use(bodyParser.json({
 app.use(cookieParser());
 
 
-
-
-
-
 // ✅ Environment validation
 const requiredEnvVars = [
   'PAYSTACK_SECRET_KEY',
@@ -276,9 +273,6 @@ const csrfLimiter = rateLimit({
   message: 'Too many CSRF requests from this IP'
 });
 
-
-
-
 // ✅ Paystack webhook verification
 const verifyPaystackWebhook = (req, res, next) => {
   const hash = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
@@ -286,8 +280,6 @@ const verifyPaystackWebhook = (req, res, next) => {
                      .digest('hex');
   hash === req.headers['x-paystack-signature'] ? next() : res.status(401).send('Unauthorized');
 };
-
-
 
 
 const sanitizeHeader = str => typeof str === 'string'
