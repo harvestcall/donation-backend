@@ -7,17 +7,17 @@ const csrfCookieName = isProduction
 
 const options = {
   getSecret: (req) => req.session.csrfSecret,
-  getSessionIdentifier: (req) => req.sessionID, // ✅ Required by csrf-csrf
+  getSessionIdentifier: (req) => req.sessionID,
   cookieName: csrfCookieName,
   cookieOptions: {
-    httpOnly: true,
-    sameSite: 'lax', // ✅ Better UX for most form-based apps
+    httpOnly: false, // ✅ Allow JS to read the cookie
+    sameSite: 'lax',
     secure: isProduction,
-    path: '/', // required for __Host- prefix
+    path: '/', // required for __Host-
   },
   size: 64,
-  getTokenFromRequest: (req) => req.body._csrf, // ✅ Needed for form POSTs
-  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'] // ✅ Optional but safe to include
+  getTokenFromRequest: (req) => req.body._csrf,
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS']
 };
 
 module.exports = {
