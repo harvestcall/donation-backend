@@ -381,7 +381,8 @@ app.get('/', (req, res, next) => {
   logger.debug('[ROUTE /] Rendering donation-form EJS');
   res.render('donation-form', {
     cspNonce: res.locals.cspNonce,
-    csrfToken: res.locals.csrfToken
+    csrfToken: res.locals.csrfToken,
+    FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL
   });
 });
 
