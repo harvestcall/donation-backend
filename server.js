@@ -170,12 +170,13 @@ app.use((req, res, next) => {
         const token = req.csrfToken();
         res.locals.csrfToken = token;
         res.cookie(csrfCookieName, token, {
-          httpOnly: false,
-          sameSite: 'lax',
+          httpOnly: false, // Must be false so JS can read it
           secure: isProduction,
+          sameSite: 'lax',
           path: '/',
-          maxAge: 1000 * 60 * 15
-        });
+          maxAge: 1000 * 60 * 15,
+          domain: '.harvestcallafrica.org' // 👈 Enables cross-subdomain cookie sharing
+    });
       } catch (tokenErr) {
         logger.warn('⚠️ req.csrfToken() failed internally:', tokenErr.message);
       }
@@ -195,10 +196,11 @@ app.use((req, res, next) => {
 
 // ✅ CORS Configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL,
+  origin: process.env.FRONTEND_BASE_URL, // Make sure this is set correctly in .env
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-  credentials: true
+  credentials: true, // 👈 Must be true to allow sending cookies cross-origin
+  optionsSuccessStatus: 200 // Some legacy browsers (e.g., IE11) need this
 }));
 
 

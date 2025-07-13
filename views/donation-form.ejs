@@ -622,7 +622,7 @@
     <div class="donation-container">
         <div class="donation-header">
             <h1 class="header-title">Partner With Us</h1>
-            <p class="header-subtitle">Your support enables us to continue our important work</p>
+            <p class="header-subtitle">Your gift equips and sends African believers into the Lord’s global harvest.</p>
         </div>
         
         <div class="donation-section">
@@ -1625,17 +1625,16 @@
                 
                 try {
                     const response = await fetch(`${API_URL}/initialize-payment`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.authorization_url) {
-                        // Redirect to payment gateway
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    credentials: 'include' // 👈 This is required for cookies to be sent
+                });
+
+                const data = await response.json();
+
+                if (data.authorization_url) {
+                    // Redirect to payment gateway
                         window.location.href = data.authorization_url;
                     } else {
                         showError('amount', 'Payment initialization failed. Please try again.');
