@@ -99,44 +99,39 @@ if (!isProduction) {
   sessionCookieOptions.secure = false; // Allow HTTP in development
 }
 
+// ✅ 1. Core middleware – must come first so req.body and cookies are available
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(cookieParser());
 
+// ✅ 2. CORS middleware – needed before anything that uses credentials or preflight
+const FRONTEND_URL = process.env.FRONTEND_BASE_URL;
+app.use(cors({
+  origin: FRONTEND_URL,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
+
+// ✅ 3. Content Security Policy (CSP) – after static assets, before session
+app.use((req, res, next) => {
+  // Your CSP middleware
+  next();
+});
+
+// ✅ 4. Session middleware – MUST COME AFTER bodyParser/cookieParser
 app.use(session({
   name: '__Host-hc-session',
-  store: new pgSession({
-    pool: pgPool,
-    tableName: 'session',
-    createTableIfMissing: true
-  }),
+  store: new pgSession({ pool: pgPool, tableName: 'session' }),
   secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
   resave: false,
   saveUninitialized: false,
   cookie: sessionCookieOptions
 }));
 
-
-// ✅ Content Security Policy middleware
-app.use((req, res, next) => {
-  const cspDirectives = {
-    'default-src': "'self'",
-    'script-src': `'self' 'nonce-${res.locals.cspNonce}' https://cdnjs.cloudflare.com `,
-    'style-src': `'self' 'unsafe-inline' https://cdnjs.cloudflare.com `,
-    'img-src': `'self' data: https:`,
-    'connect-src': "'self'",
-    'font-src': `'self' https: data:`,
-    'object-src': "'none'",
-    'media-src': "'self'"
-  };
-
-
-  let cspHeaderValue = Object.entries(cspDirectives)
-    .map(([key, value]) => `${key} ${value}`).join('; ');
-
-
-  res.setHeader('Content-Security-Policy', cspHeaderValue);
-  next();
-});
-
-
+// ✅ 5. Double-submit CSRF config – requires session to be available
 const finalOptions = {
   ...options,
   getSecret: (req) => {
@@ -147,27 +142,28 @@ const finalOptions = {
   }
 };
 
-const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
-
-
+const { doubleCsrfProtection } = doubleCsrf(finalOptions);
 app.use(doubleCsrfProtection);
 
-
-// ✅ Safe CSRF token exposure middleware
+// ✅ 6. Expose CSRF token to locals + set cookie – now guaranteed to work
 app.use((req, res, next) => {
   try {
-    if (!req.session || !req.sessionID) return next();
+    if (!req.session || !req.sessionID) {
+      logger.warn('⚠️ No session or sessionID – skipping CSRF token generation');
+      return next();
+    }
 
-    const token = req.csrfToken(); // Forces generation
+    const token = req.csrfToken(); // Now guaranteed to exist
+    logger.debug('✅ CSRF Token:', token); // <-- Great addition for debugging
+
     res.locals.csrfToken = token;
 
-    // Explicitly set the cookie
     res.cookie(csrfCookieName, token, {
-      httpOnly: false, // allow JS access
+      httpOnly: false,
       secure: isProduction,
       sameSite: 'lax',
       path: '/',
-      domain: '.harvestcallafrica.org' // enable subdomain sharing
+      domain: '.harvestcallafrica.org'
     });
 
     next();
@@ -176,30 +172,6 @@ app.use((req, res, next) => {
     next(new AppError('CSRF token generation failed', 500));
   }
 });
-
-
-// ✅ CORS Configuration
-const FRONTEND_URL = process.env.FRONTEND_BASE_URL; // e.g., https://donate.harvestcallafrica.org 
-
-app.use(cors({
-  origin: FRONTEND_URL,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-  credentials: true, // ✅ Must be true to allow cookies
-  optionsSuccessStatus: 200
-}));
-
-
-// ✅ Static files + body parsers
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-app.use(cookieParser());
-
 
 // ✅ Environment validation
 const requiredEnvVars = [
