@@ -571,26 +571,47 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
     const sanitizedDonorName = DOMPurify.sanitize(validator.escape(donorName));
     const donorFirstName = sanitizedDonorName.split(' ')[0] || 'Friend';
 
+    // ✅ Define paymentReference before using it
+    const paymentReference = paymentData.reference;
+
     // 📨 Send beautiful, styled thank-you email
     if (process.env.SENDGRID_API_KEY) {
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      try {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-      const htmlContent = buildThankYouEmail({
-        donorFirstName,
-        formattedAmount,
-        paymentReference: paymentData.reference,
-        purposeText,
-        donationDate
+        const htmlContent = buildThankYouEmail({
+          donorFirstName,
+          formattedAmount,
+          paymentReference,
+          purposeText,
+          donationDate
+        });
+
+        logger.debug('📄 Generated thank-you email HTML:', htmlContent);
+
+        await sgMail.send({
+          to: sanitizedEmail,
+          from: { name: 'Harvest Call Ministries', email: 'giving@harvestcallafrica.org' },
+          subject: `Thank You, ${donorFirstName}! Your Generosity is Making a Difference`,
+          html: htmlContent
+        });
+
+        logger.info(`📧 Thank-you email successfully sent to ${sanitizedEmail}`, {
+          to: sanitizedEmail,
+          subject: `Thank You, ${donorFirstName}`,
+          reference: paymentReference
+        });
+
+      } catch (emailErr) {
+        logger.error('❌ Failed to send thank-you email:', emailErr.message);
+        logger.debug('SendGrid error details:', emailErr.response?.body || 'No response body');
+      }
+    } else {
+      logger.warn('⚠️ SENDGRID_API_KEY not set – skipping thank-you email', {
+        donor: donorName,
+        amount: formattedAmount,
+        reference: paymentReference
       });
-
-      await sgMail.send({
-        to: sanitizedEmail,
-        from: { name: 'Harvest Call Ministries', email: 'giving@harvestcallafrica.org' },
-        subject: `Thank You, ${donorFirstName}! Your Generosity is Making a Difference`,
-        html: htmlContent
-      });
-
-      logger.info(`📧 Beautiful thank-you email sent to ${sanitizedEmail}`);
     }
 
     res.status(200).json({ status: 'success' });
@@ -600,7 +621,6 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
     next(new AppError('Failed to process webhook.', 500));
   }
 });
-
 
 
 // Admin Donations Fetches all donations from the database
