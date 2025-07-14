@@ -1596,78 +1596,82 @@ async function fetchCsrfToken() {
         // Initialize donate button with payment functionality
         function initDonateButton() {
             donateButton.addEventListener('click', async () => {
-                if (!validateForm()) return;
-                
-                // Disable button and show loading
-                donateButton.disabled = true;
-                loadingIndicator.style.display = 'block';
-                
-                const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
-                const type = document.querySelector('.type-btn.active')?.dataset.type;
-                const selectedAmountBtn = document.querySelector('.amount-btn.active');
-                const customAmount = document.getElementById('custom-amount-input')?.value;
-                
-                let amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
-                
-                const name = document.getElementById('full-name')?.value;
-                const email = document.getElementById('email')?.value;
-                const countryCode = document.getElementById('country-code').value;
-                const phoneNumber = document.getElementById('phone').value;
-                const phone = countryCode + phoneNumber;
-                
-                // Prepare allocation data
-                let staffId = null;
-                let projectId = null;
-                
-                if (selectedAllocation) {
-                    if (selectedAllocation.type === 'staff') {
-                        staffId = selectedAllocation.id;
-                    } else if (selectedAllocation.type === 'projects') {
-                        projectId = selectedAllocation.id;
-                    }
-                }
-                
-                // Prepare payload for payment initialization
-                const payload = {
-                email: email,
-                amount: parseInt(amount),
-                currency: currency,
-            metadata: {
-                donorName: name,
-                donationType: type,
-                staffId: staffId,
-                projectId: projectId,
-                phone: phone
-        },
-            _csrf: window.csrfToken // ✅ Add this line
-        };
+  if (!validateForm()) return;
 
-                
-                try {
-                    const response = await fetch(`${API_URL}/initialize-payment`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                    credentials: 'include' // 👈 This is required for cookies to be sent
-                });
+  // Disable button and show loading
+  donateButton.disabled = true;
+  loadingIndicator.style.display = 'block';
 
-                const data = await response.json();
+  // Collect form values
+  const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
+  const type = document.querySelector('.type-btn.active')?.dataset.type;
+  const selectedAmountBtn = document.querySelector('.amount-btn.active');
+  const customAmount = document.getElementById('custom-amount-input')?.value;
+  let amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
+  const name = document.getElementById('full-name')?.value;
+  const email = document.getElementById('email')?.value;
+  const countryCode = document.getElementById('country-code').value;
+  const phoneNumber = document.getElementById('phone').value;
+  const phone = countryCode + phoneNumber;
 
-                if (data.authorization_url) {
-                    // Redirect to payment gateway
-                        window.location.href = data.authorization_url;
-                    } else {
-                        showError('amount', 'Payment initialization failed. Please try again.');
-                    }
-                } catch (error) {
-                    showError('email', 'An error occurred while processing your payment.');
-                } finally {
-                    // Re-enable button and hide loading
-                    donateButton.disabled = false;
-                    loadingIndicator.style.display = 'none';
-                }
-            });
-        }
+  // Prepare allocation data
+  let staffId = null;
+  let projectId = null;
+  if (selectedAllocation) {
+    if (selectedAllocation.type === 'staff') {
+      staffId = selectedAllocation.id;
+    } else if (selectedAllocation.type === 'projects') {
+      projectId = selectedAllocation.id;
+    }
+  }
+
+  // Prepare payload for payment initialization
+  const payload = {
+    email: email,
+    amount: parseInt(amount),
+    currency: currency,
+    metadata: {
+      donorName: name,
+      donationType: type,
+      staffId: staffId,
+      projectId: projectId,
+      phone: phone
+    },
+    _csrf: window.csrfToken // ✅ CSRF token in body
+  };
+
+  try {
+    const response = await fetch(`${API_URL}/initialize-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': window.csrfToken // ✅ CSRF token in header
+      },
+      body: JSON.stringify(payload),
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.authorization_url) {
+      window.location.href = data.authorization_url;
+    } else {
+      showError('amount', 'Payment initialization failed. Please try again.');
+    }
+  } catch (error) {
+    console.error('🚨 Payment initialization failed:', error);
+    showError('email', 'An error occurred while processing your payment.');
+  } finally {
+    donateButton.disabled = false;
+    loadingIndicator.style.display = 'none';
+  }
+}); // ✅ Correctly closes the click event listener
+    }
 
         document.addEventListener('DOMContentLoaded', async () => {
   try {

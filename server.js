@@ -156,51 +156,37 @@ app.use(doubleCsrfProtection);
 // ✅ Safe CSRF token exposure middleware
 app.use((req, res, next) => {
   try {
-    if (!req.sessionID || !req.session) {
-      logger.warn('⚠️ No session or sessionID – skipping CSRF token generation');
-      return next();
-    }
+    if (!req.session || !req.sessionID) return next();
 
-    if (!req.session.csrfSecret) {
-      req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
-    }
+    const token = req.csrfToken(); // Forces generation
+    res.locals.csrfToken = token;
 
-    if (typeof req.csrfToken === 'function') {
-      try {
-        const token = req.csrfToken();
-        res.locals.csrfToken = token;
-        res.cookie(csrfCookieName, token, {
-          httpOnly: false, // Must be false so JS can read it
-          secure: isProduction,
-          sameSite: 'lax',
-          path: '/',
-          maxAge: 1000 * 60 * 15,
-          domain: '.harvestcallafrica.org' // 👈 Enables cross-subdomain cookie sharing
+    // Explicitly set the cookie
+    res.cookie(csrfCookieName, token, {
+      httpOnly: false, // allow JS access
+      secure: isProduction,
+      sameSite: 'lax',
+      path: '/',
+      domain: '.harvestcallafrica.org' // enable subdomain sharing
     });
-      } catch (tokenErr) {
-        logger.warn('⚠️ req.csrfToken() failed internally:', tokenErr.message);
-      }
-    } else {
-      logger.warn('⚠️ req.csrfToken is not available yet – skipping token assignment');
-    }
 
     next();
   } catch (err) {
     logger.error('❌ Critical CSRF token error:', err.message);
-    logger.debug('Request session:', req.session);
-    logger.debug('Session ID:', req.sessionID);
     next(new AppError('CSRF token generation failed', 500));
   }
 });
 
 
 // ✅ CORS Configuration
+const FRONTEND_URL = process.env.FRONTEND_BASE_URL; // e.g., https://donate.harvestcallafrica.org 
+
 app.use(cors({
-  origin: process.env.FRONTEND_BASE_URL, // Make sure this is set correctly in .env
+  origin: FRONTEND_URL,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-  credentials: true, // 👈 Must be true to allow sending cookies cross-origin
-  optionsSuccessStatus: 200 // Some legacy browsers (e.g., IE11) need this
+  credentials: true, // ✅ Must be true to allow cookies
+  optionsSuccessStatus: 200
 }));
 
 
@@ -383,6 +369,17 @@ app.get('/csrf-test', (req, res) => {
   res.json({
     csrfToken: token,
     message: 'CSRF token generated and cookie set'
+  });
+});
+
+app.get('/debug/csrf', (req, res) => {
+  const tokenFromSession = req.session.csrfSecret;
+  const tokenFromRequest = req.csrfToken();
+  res.json({
+    csrfSecretInSession: !!tokenFromSession,
+    csrfTokenInRequest: !!tokenFromRequest,
+    cookie: req.cookies[csrfCookieName],
+    sessionID: req.sessionID
   });
 });
 
