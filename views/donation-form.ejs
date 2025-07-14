@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Partner With Us - Donation</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Expose CSRF token to client-side JS -->
+    <script nonce="<%= cspNonce %>">
+      window.csrfToken = "<%= csrfToken %>";
+    </script>
     <style>
         :root {
             --deep-orange: #E67E22;
@@ -1260,6 +1264,20 @@
         const FRONTEND_BASE_URL = '<%= FRONTEND_BASE_URL %>';
         const API_URL = '<%= API_URL %>' || '<%= FRONTEND_BASE_URL %>';
 
+        // Fetch CSRF token before donation
+async function fetchCsrfToken() {
+  try {
+    const response = await fetch(`${API_URL}/csrf-token`, {
+      method: 'GET',
+      credentials: 'include'
+    });
+    const data = await response.json();
+    console.log('✅ CSRF token fetched:', data.csrfToken);
+  } catch (error) {
+    console.warn('⚠️ Failed to fetch CSRF token:', error.message);
+  }
+}
+
         // Current allocation type
         let currentAllocationType = 'staff';
         let selectedAllocation = null;
@@ -1611,17 +1629,19 @@
                 
                 // Prepare payload for payment initialization
                 const payload = {
-                    email: email,
-                    amount: parseInt(amount),
-                    currency: currency,
-                    metadata: {
-                        donorName: name,
-                        donationType: type,
-                        staffId: staffId,
-                        projectId: projectId,
-                        phone: phone
-                    }
-                };
+                email: email,
+                amount: parseInt(amount),
+                currency: currency,
+            metadata: {
+                donorName: name,
+                donationType: type,
+                staffId: staffId,
+                projectId: projectId,
+                phone: phone
+        },
+            _csrf: window.csrfToken // ✅ Add this line
+        };
+
                 
                 try {
                     const response = await fetch(`${API_URL}/initialize-payment`, {
@@ -1649,31 +1669,31 @@
             });
         }
 
-        // Initialize everything when DOM is loaded
         document.addEventListener('DOMContentLoaded', async () => {
-         try {
-            await fetchCsrfToken(); // Ensures CSRF cookie is set before any POST
-            } catch (err) {
-            console.error('Failed during CSRF initialization:', err);
-        // Optionally show warning to user or disable donate button
-    }
+  try {
+    await fetchCsrfToken(); // Ensure CSRF token is set
+  } catch (err) {
+    console.error('Failed during CSRF initialization:', err);
+    // Optionally disable donate button or show warning
+  }
 
-        // Initialize UI components
-            initCurrency();
-            initDonationType();
-            initAmountSelection();
-            initAllocation();
-            initDonateButton();
+  // Initialize UI components
+  initCurrency();
+  initDonationType();
+  initAmountSelection();
+  initAllocation();
+  initDonateButton();
 
-        // Fetch allocation data
-            fetchAllocationData();
+  // Fetch allocation data
+  fetchAllocationData();
 
-        // Clear errors on input
-            document.getElementById('full-name').addEventListener('input', () => clearError('name'));
-            document.getElementById('email').addEventListener('input', () => clearError('email'));
-            document.getElementById('phone').addEventListener('input', () => clearError('phone'));
-            document.getElementById('custom-amount-input').addEventListener('input', () => clearError('amount'));
-    });
+  // Clear errors on input
+  document.getElementById('full-name').addEventListener('input', () => clearError('name'));
+  document.getElementById('email').addEventListener('input', () => clearError('email'));
+  document.getElementById('phone').addEventListener('input', () => clearError('phone'));
+  document.getElementById('custom-amount-input').addEventListener('input', () => clearError('amount'));
+});
+
         // Fetch CSRF token before donation
         async function fetchCsrfToken() {
          try {

@@ -369,14 +369,21 @@ if (process.versions.node.split('.')[0] < 18) {
 
 
 // ===== ROUTES START HERE ===== //
-app.get('/healthz', (req, res) => res.status(200).send('OK'));
-app.get('/csrf-test', (req, res) => {
-  res.send(`Your CSRF token is: ${res.locals.csrfToken}`);
+// Generate CSRF token and set cookie
+app.get('/csrf-token', (req, res) => {
+  const token = req.csrfToken(); // Forces token generation
+  res.json({ csrfToken: token });
 });
 
+app.get('/healthz', (req, res) => res.status(200).send('OK'));
+
+// GET /csrf-test - For debugging CSRF token flow
 app.get('/csrf-test', (req, res) => {
   const token = res.locals.csrfToken;
-  res.send(`CSRF token set in cookie: ${token}`);
+  res.json({
+    csrfToken: token,
+    message: 'CSRF token generated and cookie set'
+  });
 });
 
 // ✅ Database initialization
