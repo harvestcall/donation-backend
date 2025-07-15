@@ -14,8 +14,6 @@ const options = {
     sameSite: 'lax',
     secure: isProduction,
     path: '/',
-    // ✅ Fix: only add domain in production
-    ...(isProduction && { domain: '.harvestcallafrica.org' })
   },
   size: 64,
   getTokenFromRequest: (req) => req.body._csrf,

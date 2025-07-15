@@ -1171,6 +1171,7 @@ const assignments = selectedProjects.map(pid => ({
 app.get('/admin/login', (req, res) => {
   res.render('admin-login', {
     cspNonce: res.locals.cspNonce,
+    csrfToken: res.locals.csrfToken, // Add this line
     error: null
   });
 });
@@ -1180,9 +1181,10 @@ app.post(
   '/admin/login',
   // Logging for debug and traceability
   (req, res, next) => {
-    logger.debug(`[ADMIN LOGIN] Session ID: ${req.sessionID}`);
-    logger.debug(`[ADMIN LOGIN] Body _csrf: ${req.body._csrf}`);
-    logger.debug(`[ADMIN LOGIN] Cookie csrf-token: ${req.cookies['csrf-token']}`);
+    // Add to POST login handlers before validation
+    logger.debug(`[LOGIN] CSRF Token from form: ${req.body._csrf}`);
+    logger.debug(`[LOGIN] CSRF Token from session: ${res.locals.csrfToken}`);
+    logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
     next();
   },
 
@@ -1253,8 +1255,9 @@ app.get('/admin/logout', requireAdminSession, (req, res) => {
 
 // ✅ Login Form - GET (Fixed)
 app.get('/login', (req, res) => {
-  res.render('staff-login', { // <— Generate on demand here
+  res.render('staff-login', {
     cspNonce: res.locals.cspNonce,
+    csrfToken: res.locals.csrfToken, // Add this line
     error: req.query.error || null
   });
 });
@@ -1264,10 +1267,10 @@ app.get('/login', (req, res) => {
 app.post(
   '/login',
   (req, res, next) => {
-    // Log session info for debugging
-    logger.debug(`[LOGIN] Session ID: ${req.sessionID}`);
-    logger.debug(`[LOGIN] Body _csrf: ${req.body._csrf}`);
-    logger.debug(`[LOGIN] Cookie csrf-token: ${req.cookies['csrf-token']}`);
+    // Add to POST login handlers before validation
+    logger.debug(`[LOGIN] CSRF Token from form: ${req.body._csrf}`);
+    logger.debug(`[LOGIN] CSRF Token from session: ${res.locals.csrfToken}`);
+    logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
     next();
   },
   (req, res, next) => {
