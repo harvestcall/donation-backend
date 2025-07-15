@@ -210,6 +210,11 @@ if (missingVars.length > 0) {
   throw new Error(`❌ Critical ENV variables missing: ${missingVars.join(', ')}`);
 }
 
+const csrfLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: 'Too many CSRF requests from this IP'
+});
 
 // ✅ Rate Limiters
 const paymentLimiter = rateLimit({
@@ -232,12 +237,13 @@ const loginLimiter = rateLimit({
   message: 'Too many login attempts'
 });
 
-
-const csrfLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  message: 'Too many CSRF requests from this IP'
+// ✅ Stricter admin login limiter
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many admin login attempts. Try again in 15 minutes.'
 });
+
 
 // ✅ Paystack webhook verification
 const verifyPaystackWebhook = (req, res, next) => {
@@ -291,38 +297,14 @@ async function getDisplayName(type, id, db) {
 }
 
 
-// ✅ Auth middleware
-const requireAuth = (req, res, next) => {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith('Basic ')) {
-    return res.status(401)
-      .set('WWW-Authenticate', 'Basic realm="Dashboard"')
-      .send('Authentication required.');
-  }
-
-
-  const base64Credentials = auth.split(' ')[1];
-  let credentials;
-  try {
-    credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-  } catch (e) {
-    return res.status(400).send('Invalid authorization format.');
-  }
-
-
-  const [username, password] = credentials.split(':');
-  if (!username || !password) {
-    return res.status(400).send('Missing username or password.');
-  }
-
-
-  if (username === process.env.DASHBOARD_USER && password === process.env.DASHBOARD_PASS) {
+// ✅ Admin Session access middleware
+const requireAdminSession = (req, res, next) => {
+  if (req.session && req.session.isAdmin) {
     return next();
   }
-
-
-  return res.status(401).send('Access denied.');
+  res.redirect('/admin/login');
 };
+
 
 
 // Sanitize and escape strings for safe HTML display
@@ -430,7 +412,7 @@ app.get('/thank-you', (req, res) => {
 });
 
 
-  app.get('/debug/donations', requireAuth, async (req, res, next) => {
+  app.get('/debug/donations', requireAdminSession, async (req, res, next) => {
     try {
       const all = await db('donations').select('*');
       res.json(all);
@@ -754,7 +736,7 @@ app.get('/projects', async (req, res, next) => {
 
 // Admin Summary Dashboard
 app.get('/admin/summary',
-  requireAuth,
+  requireAdminSession,
   async (req, res, next) => {
     try {
       const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
@@ -855,7 +837,7 @@ app.get('/admin/summary',
 );
 
 // Export Admin Summary
-app.get('/admin/export/summary', requireAuth, async (req, res, next) => {
+app.get('/admin/export/summary', requireAdminSession, async (req, res, next) => {
   const format = req.query.format || 'csv';
   const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
   const [year, month] = targetMonth.split('-').map(Number);
@@ -902,22 +884,9 @@ app.get('/admin/export/summary', requireAuth, async (req, res, next) => {
   res.status(400).send('Invalid format requested');
 });
 
-// Admin Logout
-app.get('/admin/logout', requireAuth, (req, res) => {
-  req.session.destroy(err => {
-    if (err) {
-      logger.error('Logout error:', err);
-      return res.status(500).send('Logout failed.');
-    }
-    res.clearCookie('connect.sid');
-    res.redirect('/');
-  });
-});
-
-
 
 // View and manage staff accounts (/admin/staff)
-app.get('/admin/staff', requireAuth, async (req, res, next) => {
+app.get('/admin/staff', requireAdminSession, async (req, res, next) => {
   try {
     const staffList = await db('staff').orderBy('name');
     res.render('admin-staff', {
@@ -930,7 +899,7 @@ app.get('/admin/staff', requireAuth, async (req, res, next) => {
 });
 
 
-app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
+app.post('/admin/toggle-staff/:id', requireAdminSession, async (req, res, next) => {
   try {
     // ✅ Fix SQL Injection Vulnerability - Replaced with safe parsing
     const staffId = parseInt(req.params.id);
@@ -969,7 +938,7 @@ app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
 
 
 // View all projects
-app.get('/admin/projects', requireAuth, async (req, res, next) => {
+app.get('/admin/projects', requireAdminSession, async (req, res, next) => {
   try {
     const projects = await db('projects').orderBy('created_at', 'desc');
     res.render('admin-projects', {
@@ -983,7 +952,7 @@ app.get('/admin/projects', requireAuth, async (req, res, next) => {
 
 
 // Toggle project active status
-app.post('/admin/toggle-project/:id', requireAuth, async (req, res, next) => {
+app.post('/admin/toggle-project/:id', requireAdminSession, async (req, res, next) => {
   const projectId = req.sanitizedId;
   try {
     const project = await db('projects').where({ id: projectId }).first();
@@ -1008,7 +977,7 @@ app.post('/admin/toggle-project/:id', requireAuth, async (req, res, next) => {
 
 
 // GET: Show form to add a new project
-app.get('/admin/add-project', requireAuth, (req, res) => {
+app.get('/admin/add-project', requireAdminSession, (req, res) => {
   res.send(`
     <html>
       <head>
@@ -1040,7 +1009,7 @@ app.get('/admin/add-project', requireAuth, (req, res) => {
 
 // POST: Handle form submission
 app.post('/admin/add-project',
-  requireAuth,
+  requireAdminSession,
   [
     body('name').isString().trim().notEmpty().withMessage('Project name is required'),
     body('description').optional().isString().trim()
@@ -1067,7 +1036,7 @@ app.post('/admin/add-project',
 
 
 // Show the form to add new staff + create account
-app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
+app.get('/admin/add-staff-account', requireAdminSession, async (req, res, next) => {
   try {
     const form = `
     <!DOCTYPE html>
@@ -1111,7 +1080,7 @@ app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
 
 // Handle form submission to add staff + create login
 app.post('/admin/add-staff-account',
-  requireAuth,
+  requireAdminSession,
   [
     body('name').isString().trim().notEmpty().withMessage('Name is required'),
     body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
@@ -1178,7 +1147,7 @@ app.post('/admin/add-staff-account',
 
 
 // Show assign projects form
-app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
+app.get('/admin/assign-projects', requireAdminSession, async (req, res, next) => {
   try {
     const staff = await db('staff').where({ active: true }).orderBy('name');
     const projects = await db('projects').where({ active: true }).orderBy('name');
@@ -1195,7 +1164,7 @@ app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
 
 
 // Handle project assignment
-app.post('/admin/assign-projects', requireAuth, async (req, res, next) => {
+app.post('/admin/assign-projects', requireAdminSession, async (req, res, next) => {
   const staffId = req.body.staffId;
   const selectedProjects = Array.isArray(req.body.projectIds)
     ? req.body.projectIds
@@ -1226,16 +1195,102 @@ const assignments = selectedProjects.map(pid => ({
 });
 
 
+// Admin Login Form - GET
+app.get('/admin/login', (req, res) => {
+  res.render('admin-login', {
+    csrfToken: req.csrfToken(),
+    cspNonce: res.locals.cspNonce,
+    error: null
+  });
+});
+
+// Admin Login Form - POST
+app.post(
+  '/admin/login',
+  // Logging for debug and traceability
+  (req, res, next) => {
+    logger.debug(`[ADMIN LOGIN] Session ID: ${req.sessionID}`);
+    logger.debug(`[ADMIN LOGIN] Body _csrf: ${req.body._csrf}`);
+    logger.debug(`[ADMIN LOGIN] Cookie csrf-token: ${req.cookies['csrf-token']}`);
+    next();
+  },
+
+  // Optional: Apply advanced CSRF wrapper if you're using double protection elsewhere
+  (req, res, next) => {
+    doubleCsrfProtection(req, res, (err) => {
+      if (err) {
+        logger.warn(`[CSRF] Admin login CSRF error: ${err.message}`);
+      }
+      next(err);
+    });
+  },
+
+  // Brute-force rate limiter
+  adminLimiter,
+
+  // Input validation
+  [
+    body('username').trim().notEmpty().escape(),
+    body('password').trim().notEmpty().escape()
+  ],
+  validateRequest, // Your custom validator wrapper
+
+  async (req, res) => {
+    const { username, password } = req.body;
+    const adminUser = process.env.DASHBOARD_USER;
+    const adminPass = process.env.DASHBOARD_PASS;
+
+    if (username !== adminUser || password !== adminPass) {
+      return res.status(401).render('admin-login', {
+        csrfToken: req.csrfToken(),
+        cspNonce: res.locals.cspNonce,
+        error: 'Invalid username or password.'
+      });
+    }
+
+    req.session.regenerate(err => {
+      if (err) {
+        logger.error('❌ Admin session regeneration failed:', err.message);
+        return res.status(500).render('admin-login', {
+          csrfToken: req.csrfToken(),
+          cspNonce: res.locals.cspNonce,
+          error: 'Something went wrong. Please try again.'
+        });
+      }
+
+      req.session.isAdmin = true;
+
+      // Optional: clear CSRF secret if using rotating tokens
+      delete req.session.csrfSecret;
+
+      res.redirect(303, '/admin/summary');
+    });
+  }
+);
+
+// Admin Logout
+app.get('/admin/logout', requireAdminSession, (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      logger.error('❌ Admin logout error:', err);
+      return res.status(500).send('Logout failed.');
+    }
+
+    // ✅ Clear session cookie securely
+    res.clearCookie('__Host-hc-session'); // Or your actual secure cookie name
+    res.redirect('/admin/login');
+  });
+});
+
+
 // ✅ Login Form - GET
 app.get('/login', (req, res) => {
-  res.render('login', {
+  res.render('staff-login', {
     csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce,
     error: req.query.error || null
   });
 });
-
-
 
 // ✅ Login Handler - POST
 app.post(
@@ -1320,6 +1375,18 @@ app.post(
     }
   }
 );
+
+app.get('/logout', (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      logger.error('Logout error:', err);
+      return res.status(500).send('Logout failed.');
+    }
+    res.clearCookie('__Host-hc-session'); // Or your session cookie name
+    res.redirect('/login');
+  });
+});
+
 
 
 // Forgot Password - Show Request Form

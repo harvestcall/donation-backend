@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Staff Login – Harvest Call Ministries</title>
+  <meta name="robots" content="noindex">
+  <style nonce="<%= cspNonce %>">
+    :root {
+      --deep-orange: #E67E22;
+      --dark-blue: #003366;
+      --rich-green: #2E7D32;
+      --light-gold: #FDF5E6;
+      --light-blue: #E3F2FD;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #e6f0fa, #e8f5eb);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .login-container {
+      background: #fff;
+      padding: 2.5rem 2rem;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .login-container h2 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      font-size: 1.8rem;
+      color: var(--dark-blue);
+    }
+
+    .input-group {
+      margin-bottom: 1.2rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      color: var(--dark-blue);
+    }
+
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      font-size: 1rem;
+      transition: border-color 0.3s;
+    }
+
+    input:focus {
+      border-color: var(--deep-orange);
+      outline: none;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      background: var(--deep-orange);
+      color: white;
+      font-weight: 700;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #d35400;
+    }
+
+    .error-message {
+      background: #ffebee;
+      color: #b71c1c;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .forgot-link {
+      margin-top: 1rem;
+      text-align: center;
+    }
+
+    .forgot-link a {
+      color: var(--dark-blue);
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+
+    .forgot-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h2>Staff Login</h2>
+
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="error-message"><%= error %></div>
+    <% } %>
+
+    <form action="/login" method="POST" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+      <div class="input-group">
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" autocomplete="username" required />
+      </div>
+
+      <div class="input-group">
+        <label for="password">Password</label>
+        <input type="password" name="password" id="password" autocomplete="current-password" required />
+      </div>
+
+      <button type="submit">Login</button>
+    </form>
+
+    <div class="forgot-link">
+      <a href="/forgot-password">Forgot your password?</a>
+    </div>
+  </div>
+</body>
+</html>
