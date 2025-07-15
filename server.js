@@ -181,14 +181,6 @@ app.use((req, res, next) => {
 
     res.locals.csrfToken = token;
 
-    res.cookie(csrfCookieName, token, {
-      httpOnly: false, // allow JS access
-      secure: isProduction,
-      sameSite: 'lax',
-      path: '/',
-      domain: '.harvestcallafrica.org' // enable subdomain sharing
-    });
-
     next();
   } catch (err) {
     logger.error('❌ Critical CSRF token error:', err.message);
