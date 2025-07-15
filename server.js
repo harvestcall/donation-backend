@@ -1169,12 +1169,14 @@ const assignments = selectedProjects.map(pid => ({
 
 // Admin Login Form - GET
 app.get('/admin/login', (req, res) => {
+  const token = req.csrfToken(); // Generate token explicitly
   res.render('admin-login', {
     cspNonce: res.locals.cspNonce,
-    csrfToken: res.locals.csrfToken, // Add this line
+    csrfToken: token,
     error: null
   });
 });
+
 
 // Admin Login Form - POST
 app.post(
