@@ -31,7 +31,9 @@ const { body, validationResult } = require('express-validator');
 const { buildThankYouEmail } = require('./utils/emailTemplates');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
-
+const AppError = require('./utils/errors/AppError');
+const { isProduction } = require('./config/environment');
+const pgPool = require('./db/connection').pgPool;
 
 
 // ✅ PostgreSQL pool
@@ -73,10 +75,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 
-app.set('trust proxy', 1); // Trust Render.com proxies
+// ✅ Trust proxy – set first to ensure rate limiting works properly
+app.set('trust proxy', 1); // Only trust one level of reverse proxy (Render)
+
+// ✅ Set view engine early (required for rendering templates later)
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-
 
 // ✅ Generate CSP nonce per request
 app.use((req, res, next) => {
@@ -84,29 +88,19 @@ app.use((req, res, next) => {
   next();
 });
 
-
-// ✅ Session middleware - MUST come before CSRF
-const sessionCookieOptions = {
-  path: '/',
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? 'lax' : 'strict',
-  maxAge: 30 * 60 * 1000 // 30 minutes
-};
-
-
-if (!isProduction) {
-  sessionCookieOptions.secure = false; // Allow HTTP in development
-}
-
 // ✅ 1. Core middleware – must come first so req.body and cookies are available
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(bodyParser.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(cookieParser());
 
 // ✅ 2. CORS middleware – needed before anything that uses credentials or preflight
 const FRONTEND_URL = process.env.FRONTEND_BASE_URL;
+
 app.use(cors({
   origin: FRONTEND_URL,
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -115,23 +109,53 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// ✅ 3. Content Security Policy (CSP) – after static assets, before session
+// ✅ 3. Content Security Policy (CSP) middleware
 app.use((req, res, next) => {
-  // Your CSP middleware
+  const cspDirectives = {
+    'default-src': "'self'",
+    'script-src': `'self' 'nonce-${res.locals.cspNonce}' https://cdnjs.cloudflare.com `,
+    'style-src': `'self' 'unsafe-inline' https://cdnjs.cloudflare.com `,
+    'img-src': `'self' data: https:`,
+    'connect-src': "'self'",
+    'font-src': `'self' https: data:`,
+    'object-src': "'none'",
+    'media-src': "'self'"
+  };
+
+  let cspHeaderValue = Object.entries(cspDirectives)
+    .map(([key, value]) => `${key} ${value}`).join('; ');
+
+  res.setHeader('Content-Security-Policy', cspHeaderValue);
   next();
 });
 
 // ✅ 4. Session middleware – MUST COME AFTER bodyParser/cookieParser
+const sessionCookieOptions = {
+  path: '/',
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? 'lax' : 'strict',
+  maxAge: 30 * 60 * 1000 // 30 minutes
+};
+
+if (!isProduction) {
+  sessionCookieOptions.secure = false; // Allow HTTP in development
+}
+
 app.use(session({
   name: '__Host-hc-session',
-  store: new pgSession({ pool: pgPool, tableName: 'session' }),
+  store: new pgSession({
+    pool: pgPool,
+    tableName: 'session',
+    createTableIfMissing: true
+  }),
   secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
   resave: false,
   saveUninitialized: false,
   cookie: sessionCookieOptions
 }));
 
-// ✅ 5. Double-submit CSRF config – requires session to be available
+// ✅ 5. Double-submit CSRF config – define options BEFORE using them
 const finalOptions = {
   ...options,
   getSecret: (req) => {
@@ -143,6 +167,7 @@ const finalOptions = {
 };
 
 const { doubleCsrfProtection } = doubleCsrf(finalOptions);
+
 app.use(doubleCsrfProtection);
 
 // ✅ 6. Expose CSRF token to locals + set cookie – now guaranteed to work
@@ -154,16 +179,16 @@ app.use((req, res, next) => {
     }
 
     const token = req.csrfToken(); // Now guaranteed to exist
-    logger.debug('✅ CSRF Token:', token); // <-- Great addition for debugging
+    logger.debug('✅ CSRF Token:', token);
 
     res.locals.csrfToken = token;
 
     res.cookie(csrfCookieName, token, {
-      httpOnly: false,
+      httpOnly: false, // allow JS access
       secure: isProduction,
       sameSite: 'lax',
       path: '/',
-      domain: '.harvestcallafrica.org'
+      domain: '.harvestcallafrica.org' // enable subdomain sharing
     });
 
     next();
