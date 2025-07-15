@@ -33,7 +33,6 @@ const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
 const AppError = require('./utils/errors/AppError');
 const { isProduction } = require('./config/environment');
-const pgPool = require('./db/connection').pgPool;
 
 
 // ✅ PostgreSQL pool
