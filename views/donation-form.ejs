@@ -1701,7 +1701,7 @@ async function fetchCsrfToken() {
         // Fetch CSRF token before donation
         async function fetchCsrfToken() {
          try {
-            const res = await fetch(`${API_URL}/csrf-test`, {
+            const res = await fetch(`${API_URL}/csrf-token`, {
             method: 'GET',
             credentials: 'include'
         });
