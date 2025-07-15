@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Admin Login – Harvest Call</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
   <style nonce="<%= cspNonce %>">
     body {
       background: #e6f0fa;
@@ -80,6 +81,8 @@
     <% } %>
 
     <form method="POST" action="/admin/login">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
       <div class="input-group">
         <label for="username">Username</label>
         <input type="text" name="username" id="username" required />

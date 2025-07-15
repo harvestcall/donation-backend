@@ -10,10 +10,12 @@ const options = {
   getSessionIdentifier: (req) => req.sessionID,
   cookieName: csrfCookieName,
   cookieOptions: {
-    httpOnly: false, // ✅ Allow JS to read the cookie
+    httpOnly: false,
     sameSite: 'lax',
     secure: isProduction,
-    path: '/', // required for __Host-
+    path: '/',
+    // ✅ Fix: only add domain in production
+    ...(isProduction && { domain: '.harvestcallafrica.org' })
   },
   size: 64,
   getTokenFromRequest: (req) => req.body._csrf,
