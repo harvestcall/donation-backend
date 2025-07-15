@@ -1170,7 +1170,6 @@ const assignments = selectedProjects.map(pid => ({
 // Admin Login Form - GET
 app.get('/admin/login', (req, res) => {
   res.render('admin-login', {
-    csrfToken: req.csrfToken(),
     cspNonce: res.locals.cspNonce,
     error: null
   });
@@ -1232,9 +1231,6 @@ app.post(
 
       req.session.isAdmin = true;
 
-      // Optional: clear CSRF secret if using rotating tokens
-      delete req.session.csrfSecret;
-
       res.redirect(303, '/admin/summary');
     });
   }
@@ -1257,8 +1253,7 @@ app.get('/admin/logout', requireAdminSession, (req, res) => {
 
 // ✅ Login Form - GET (Fixed)
 app.get('/login', (req, res) => {
-  res.render('staff-login', {
-    csrfToken: req.csrfToken(), // <— Generate on demand here
+  res.render('staff-login', { // <— Generate on demand here
     cspNonce: res.locals.cspNonce,
     error: req.query.error || null
   });
@@ -1335,9 +1330,6 @@ app.post(
 
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
-
-        // Clear any previous CSRF secrets – let middleware handle it
-        delete req.session.csrfSecret;
 
         res.redirect(303, '/staff-dashboard');
       });
