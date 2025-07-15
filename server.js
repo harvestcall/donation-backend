@@ -168,26 +168,6 @@ const { doubleCsrfProtection } = doubleCsrf(finalOptions);
 
 app.use(doubleCsrfProtection);
 
-// ✅ 6. Expose CSRF token to locals + set cookie – now guaranteed to work
-app.use((req, res, next) => {
-  try {
-    if (!req.session || !req.sessionID) {
-      logger.warn('⚠️ No session or sessionID – skipping CSRF token generation');
-      return next();
-    }
-
-    const token = req.csrfToken(); // Now guaranteed to exist
-    logger.debug('✅ CSRF Token:', token);
-
-    res.locals.csrfToken = token;
-
-    next();
-  } catch (err) {
-    logger.error('❌ Critical CSRF token error:', err.message);
-    next(new AppError('CSRF token generation failed', 500));
-  }
-});
-
 // ✅ Environment validation
 const requiredEnvVars = [
   'PAYSTACK_SECRET_KEY',
@@ -1275,14 +1255,15 @@ app.get('/admin/logout', requireAdminSession, (req, res) => {
 });
 
 
-// ✅ Login Form - GET
+// ✅ Login Form - GET (Fixed)
 app.get('/login', (req, res) => {
   res.render('staff-login', {
-    csrfToken: res.locals.csrfToken,
+    csrfToken: req.csrfToken(), // <— Generate on demand here
     cspNonce: res.locals.cspNonce,
     error: req.query.error || null
   });
 });
+
 
 // ✅ Login Handler - POST
 app.post(
