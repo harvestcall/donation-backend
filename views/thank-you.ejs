@@ -1,14 +1,137 @@
-<% if (amount && currency) { %>
-  <div class="details">
-    <p><strong>Amount:</strong> <%= currency === 'NGN' ? '₦' : '$' %><%= (amount).toLocaleString() %></p>
-    <p><strong>Type:</strong> 
-      <%= donationType === 'recurring' ? 'Recurring' : 'One-Time' %>
-    </p>
-    <p><strong>Purpose:</strong> 
-      <% if (purpose === 'staff') { %> Staff Support <% } %>
-      <% if (purpose === 'project') { %> Project Support <% } %>
-      <% if (purpose === 'general') { %> General Ministry <% } %>
-    </p>
-    <p><strong>Date:</strong> <%= new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) %></p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Thank You – Harvest Call Ministries</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <meta name="robots" content="noindex" />
+  <style nonce="<%= cspNonce %>">
+    body {
+      background: linear-gradient(135deg, #e6f0fa, #e8f5eb);
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 30px;
+    }
+
+    .thank-you-container {
+      background: #fff;
+      max-width: 700px;
+      width: 100%;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .thank-you-header {
+      background: linear-gradient(135deg, #003366 0%, #2E7D32 100%);
+      color: white;
+      padding: 30px;
+      border-radius: 12px 12px 0 0;
+    }
+
+    .thank-you-header h1 {
+      margin: 0;
+      font-size: 2.2rem;
+    }
+
+    .details {
+      text-align: left;
+      margin: 30px 0;
+      padding: 20px;
+      background: #fdf5e6;
+      border-radius: 12px;
+      border: 1px solid #f0e6d6;
+    }
+
+    .details p {
+      margin-bottom: 12px;
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    .highlight {
+      color: #E67E22;
+      font-weight: bold;
+    }
+
+    .impact {
+      font-style: italic;
+      background: #e8f5e9;
+      padding: 20px;
+      border-radius: 10px;
+      color: #2E7D32;
+      border-left: 4px solid #2E7D32;
+      margin-bottom: 30px;
+    }
+
+    .cta {
+      display: inline-block;
+      background: #E67E22;
+      color: white;
+      padding: 16px 30px;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      transition: 0.3s;
+    }
+
+    .cta:hover {
+      background: #d35400;
+    }
+
+    .footer {
+      margin-top: 40px;
+      font-size: 0.9rem;
+      color: #8D6E63;
+    }
+  </style>
+</head>
+<body>
+  <div class="thank-you-container">
+    <div class="thank-you-header">
+      <h1>Thank You, <%= name || 'Friend' %>!</h1>
+      <p>Your generosity is helping transform lives across Africa.</p>
+    </div>
+
+    <% if (amount && currency) { %>
+      <div class="details">
+        <p><strong>Amount:</strong> 
+          <span class="highlight"><%= currency === 'NGN' ? '₦' : '$' %><%= parseFloat(amount).toLocaleString() %></span>
+        </p>
+        <p><strong>Type:</strong> 
+          <%= donationType === 'recurring' ? 'Recurring' : 'One-Time' %>
+        </p>
+        <p><strong>Purpose:</strong> 
+          <% if (purpose === 'staff') { %> Staff Support <% } %>
+          <% if (purpose === 'project') { %> Project Support <% } %>
+          <% if (purpose === 'general') { %> General Ministry <% } %>
+        </p>
+        <p><strong>Date:</strong> 
+          <%= new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) %>
+        </p>
+      </div>
+    <% } %>
+
+    <div class="impact">
+      "Your partnership enables indigenous missionaries to bring the Gospel to unreached communities."
+    </div>
+
+    <a class="cta" href="https://harvestcallafrica.org/impact" target="_blank" rel="noopener noreferrer">
+      See the Impact
+    </a>
+
+    <div class="footer">
+      Harvest Call Ministries &bull; Abuja, Nigeria<br/>
+      <a href="https://harvestcallafrica.org">harvestcallafrica.org</a> &bull;
+      <a href="mailto:info@harvestcallafrica.org">info@harvestcallafrica.org</a>
+    </div>
   </div>
-<% } %>
+</body>
+</html>
