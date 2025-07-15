@@ -31,7 +31,6 @@ const { body, validationResult } = require('express-validator');
 const { buildThankYouEmail } = require('./utils/emailTemplates');
 const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
-const AppError = require('./utils/errors/AppError');
 
 
 
