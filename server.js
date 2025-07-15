@@ -1188,16 +1188,6 @@ app.post(
     next();
   },
 
-  // Optional: Apply advanced CSRF wrapper if you're using double protection elsewhere
-  (req, res, next) => {
-    doubleCsrfProtection(req, res, (err) => {
-      if (err) {
-        logger.warn(`[CSRF] Admin login CSRF error: ${err.message}`);
-      }
-      next(err);
-    });
-  },
-
   // Brute-force rate limiter
   adminLimiter,
 
@@ -1273,15 +1263,7 @@ app.post(
     logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
     next();
   },
-  (req, res, next) => {
-    // Wrap doubleCsrfProtection to log errors
-    doubleCsrfProtection(req, res, (err) => {
-      if (err) {
-        logger.warn(`[CSRF] doubleCsrfProtection error: ${err.message}`);
-      }
-      next(err);
-    });
-  },
+  
   loginLimiter,
   [
     body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
