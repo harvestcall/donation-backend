@@ -1402,17 +1402,24 @@ async function fetchAllocationData() {
       console.error('❌ Projects fetch failed:', err.message);
     }
 
-    console.log('Final staffMembers:', staffMembers);
-    console.log('Final projects:', projects);
-    
     // Set final values
     staffMembers = staffJson.length > 0 ? staffJson : mockStaff;
     projects = projectsJson.length > 0 ? projectsJson : mockProjects;
+
+    // Log final results
+    console.log('Final staffMembers:', staffMembers);
+    console.log('Final projects:', projects);
+
+    // Show user feedback if fallback occurred
+    if (staffMembers === mockStaff && projects === mockProjects) {
+        showError('allocation', 'Failed to load allocation options. Using default values.');
+    }
 
   } catch (error) {
     console.warn('⚠️ Unexpected error loading allocation data:', error.message);
     staffMembers = mockStaff;
     projects = mockProjects;
+    showError('allocation', 'Failed to load allocation options. Using default values.');
   } finally {
     populateAllocationList(currentAllocationType);
   }
@@ -1653,22 +1660,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     initAllocation();
     initDonateButton();
 
-     // 🔍 Debug fetch goes here
-    fetch('https://donate.harvestcallafrica.org/staff ', { credentials: 'include' })
-      .then(res => {
-        console.log('Response OK?', res.ok);
-        return res.text();
-      })
-      .then(text => console.log('Raw response (staff):', text))
-      .catch(console.error);
-
-    fetch('https://donate.harvestcallafrica.org/projects ', { credentials: 'include' })
-        .then(res => {
-             console.log('Projects response OK?', res.ok);
+     
+    // DEBUG FETCHES
+fetch('https://donate.harvestcallafrica.org/staff ')
+  .then(res => {
+    console.log('Staff response OK?', res.ok);
     return res.text();
   })
-  .then(text => console.log('Raw response (projects):', text))
-  .catch(console.error);
+  .then(text => console.log('Raw staff response:', text))
+  .catch(err => console.error('Staff fetch error:', err));
+
+fetch('https://donate.harvestcallafrica.org/projects ')
+  .then(res => {
+    console.log('Projects response OK?', res.ok);
+    return res.text();
+  })
+  .then(text => console.log('Raw projects response:', text))
+  .catch(err => console.error('Projects fetch error:', err));
 
     // Proceed with normal data fetching
     await fetchAllocationData();
