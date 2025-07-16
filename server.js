@@ -239,6 +239,14 @@ const csrfLimiter = rateLimit({
   message: 'Too many CSRF requests from this IP'
 });
 
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 login requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many login attempts. Please try again in 15 minutes.'
+});
+
 // ✅ Paystack webhook verification
 const verifyPaystackWebhook = (req, res, next) => {
   const hash = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
