@@ -349,6 +349,23 @@ if (process.versions.node.split('.')[0] < 18) {
 }
 
 
+// ✅ Admin Session access middleware
+const requireAdminSession = (req, res, next) => {
+  if (req.session && req.session.isAdmin) {
+    return next();
+  }
+  res.redirect('/admin/login');
+};
+
+// ✅ Staff session middleware
+const requireStaffSession = (req, res, next) => {
+  if (req.session && req.session.staffId) {
+    return next();
+  }
+  res.redirect('/login');
+};
+
+
 // ===== ROUTES START HERE ===== //
 // Generate CSRF token and set cookie
 app.get('/csrf-token', (req, res) => {
@@ -432,7 +449,7 @@ app.get('/thank-you', (req, res) => {
 
 
 
-  app.get('/debug/donations', requireAuth, async (req, res, next) => {
+  app.get('/debug/donations', requireAdminSession, async (req, res, next) => {
     try {
       const all = await db('donations').select('*');
       res.json(all);
@@ -666,8 +683,97 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
 });
 
 
+// Admin Login Form - GET
+app.get('/admin/login', (req, res) => {
+  const token = req.csrfToken(); // Generate token explicitly
+  res.render('admin-login', {
+    cspNonce: res.locals.cspNonce,
+    csrfToken: token,
+    error: null
+  });
+});
+
+
+
+
+// Admin Login Form - POST
+app.post(
+  '/admin/login',
+  // Logging for debug and traceability
+  (req, res, next) => {
+    // Add to POST login handlers before validation
+    logger.debug(`[LOGIN] CSRF Token from form: ${req.body._csrf}`);
+    logger.debug(`[LOGIN] CSRF Token from session: ${res.locals.csrfToken}`);
+    logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
+    next();
+  },
+
+
+  // Brute-force rate limiter
+  adminLimiter,
+
+
+  // Input validation
+  [
+    body('username').trim().notEmpty().escape(),
+    body('password').trim().notEmpty().escape()
+  ],
+  validateRequest, // Your custom validator wrapper
+
+
+  async (req, res) => {
+    const { username, password } = req.body;
+    const adminUser = process.env.DASHBOARD_USER;
+    const adminPass = process.env.DASHBOARD_PASS;
+
+
+    if (username !== adminUser || password !== adminPass) {
+      return res.status(401).render('admin-login', {
+        csrfToken: req.csrfToken(),
+        cspNonce: res.locals.cspNonce,
+        error: 'Invalid username or password.'
+      });
+    }
+
+
+    req.session.regenerate(err => {
+      if (err) {
+        logger.error('❌ Admin session regeneration failed:', err.message);
+        return res.status(500).render('admin-login', {
+          csrfToken: req.csrfToken(),
+          cspNonce: res.locals.cspNonce,
+          error: 'Something went wrong. Please try again.'
+        });
+      }
+
+
+      req.session.isAdmin = true;
+
+
+      res.redirect(303, '/admin/summary');
+    });
+  }
+);
+
+
+// Admin Logout
+// Admin Logout
+app.get('/admin/logout', requireAdminSession, (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      logger.error('❌ Admin logout error:', err);
+      return res.status(500).send('Logout failed.');
+    }
+
+    // ✅ Clear session cookie securely
+    res.clearCookie('__Host-hc-session');
+    res.redirect('/admin/login');
+  });
+});
+
+
 // Admin Donations Fetches all donations from the database
-app.get('/admin/donations', async (req, res, next) => {
+app.get('/admin/donations', requireAdminSession, async (req, res, next) => {
   try {
     const donations = await db('donations').orderBy('id', 'desc');
 
@@ -756,7 +862,7 @@ app.get('/projects', async (req, res, next) => {
 
 // Admin Summary Dashboard
 app.get('/admin/summary',
-  requireAuth,
+  requireAdminSession,
   async (req, res, next) => {
     try {
       const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
@@ -857,7 +963,7 @@ app.get('/admin/summary',
 );
 
 // Export Admin Summary
-app.get('/admin/export/summary', requireAuth, async (req, res, next) => {
+app.get('/admin/export/summary', requireAdminSession, async (req, res, next) => {
   const format = req.query.format || 'csv';
   const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
   const [year, month] = targetMonth.split('-').map(Number);
@@ -904,22 +1010,9 @@ app.get('/admin/export/summary', requireAuth, async (req, res, next) => {
   res.status(400).send('Invalid format requested');
 });
 
-// Admin Logout
-app.get('/admin/logout', requireAuth, (req, res) => {
-  req.session.destroy(err => {
-    if (err) {
-      logger.error('Logout error:', err);
-      return res.status(500).send('Logout failed.');
-    }
-    res.clearCookie('connect.sid');
-    res.redirect('/');
-  });
-});
-
-
 
 // View and manage staff accounts (/admin/staff)
-app.get('/admin/staff', requireAuth, async (req, res, next) => {
+app.get('/admin/staff', requireAdminSession, async (req, res, next) => {
   try {
     const staffList = await db('staff').orderBy('name');
     res.render('admin-staff', {
@@ -932,7 +1025,7 @@ app.get('/admin/staff', requireAuth, async (req, res, next) => {
 });
 
 
-app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
+app.post('/admin/toggle-staff/:id', requireAdminSession, async (req, res, next) => {
   try {
     // ✅ Fix SQL Injection Vulnerability - Replaced with safe parsing
     const staffId = parseInt(req.params.id);
@@ -971,7 +1064,7 @@ app.post('/admin/toggle-staff/:id', requireAuth, async (req, res, next) => {
 
 
 // View all projects
-app.get('/admin/projects', requireAuth, async (req, res, next) => {
+app.get('/admin/projects', requireAdminSession, async (req, res, next) => {
   try {
     const projects = await db('projects').orderBy('created_at', 'desc');
     res.render('admin-projects', {
@@ -985,7 +1078,7 @@ app.get('/admin/projects', requireAuth, async (req, res, next) => {
 
 
 // Toggle project active status
-app.post('/admin/toggle-project/:id', requireAuth, async (req, res, next) => {
+app.post('/admin/toggle-project/:id', requireAdminSession, async (req, res, next) => {
   const projectId = req.sanitizedId;
   try {
     const project = await db('projects').where({ id: projectId }).first();
@@ -1010,7 +1103,7 @@ app.post('/admin/toggle-project/:id', requireAuth, async (req, res, next) => {
 
 
 // GET: Show form to add a new project
-app.get('/admin/add-project', requireAuth, (req, res) => {
+app.get('/admin/add-project', requireAdminSession, (req, res) => {
   res.send(`
     <html>
       <head>
@@ -1042,7 +1135,7 @@ app.get('/admin/add-project', requireAuth, (req, res) => {
 
 // POST: Handle form submission
 app.post('/admin/add-project',
-  requireAuth,
+  requireAdminSession,
   [
     body('name').isString().trim().notEmpty().withMessage('Project name is required'),
     body('description').optional().isString().trim()
@@ -1069,7 +1162,7 @@ app.post('/admin/add-project',
 
 
 // Show the form to add new staff + create account
-app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
+app.get('/admin/add-staff-account', requireAdminSession, async (req, res, next) => {
   try {
     const form = `
     <!DOCTYPE html>
@@ -1113,7 +1206,7 @@ app.get('/admin/add-staff-account', requireAuth, async (req, res, next) => {
 
 // Handle form submission to add staff + create login
 app.post('/admin/add-staff-account',
-  requireAuth,
+  requireAdminSession,
   [
     body('name').isString().trim().notEmpty().withMessage('Name is required'),
     body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
@@ -1180,7 +1273,7 @@ app.post('/admin/add-staff-account',
 
 
 // Show assign projects form
-app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
+app.get('/admin/assign-projects', requireAdminSession, async (req, res, next) => {
   try {
     const staff = await db('staff').where({ active: true }).orderBy('name');
     const projects = await db('projects').where({ active: true }).orderBy('name');
@@ -1197,7 +1290,7 @@ app.get('/admin/assign-projects', requireAuth, async (req, res, next) => {
 
 
 // Handle project assignment
-app.post('/admin/assign-projects', requireAuth, async (req, res, next) => {
+app.post('/admin/assign-projects', requireAdminSession, async (req, res, next) => {
   const staffId = req.body.staffId;
   const selectedProjects = Array.isArray(req.body.projectIds)
     ? req.body.projectIds
@@ -1228,14 +1321,15 @@ const assignments = selectedProjects.map(pid => ({
 });
 
 
-// ✅ Login Form - GET
+// ✅ Login Form - GET (Fixed)
 app.get('/login', (req, res) => {
-  res.render('login', {
-    csrfToken: res.locals.csrfToken,
+  res.render('staff-login', {
     cspNonce: res.locals.cspNonce,
+    csrfToken: res.locals.csrfToken, // Add this line
     error: req.query.error || null
   });
 });
+
 
 
 
@@ -1243,21 +1337,13 @@ app.get('/login', (req, res) => {
 app.post(
   '/login',
   (req, res, next) => {
-    // Log session info for debugging
-    logger.debug(`[LOGIN] Session ID: ${req.sessionID}`);
-    logger.debug(`[LOGIN] Body _csrf: ${req.body._csrf}`);
-    logger.debug(`[LOGIN] Cookie csrf-token: ${req.cookies['csrf-token']}`);
+    // Add to POST login handlers before validation
+    logger.debug(`[LOGIN] CSRF Token from form: ${req.body._csrf}`);
+    logger.debug(`[LOGIN] CSRF Token from session: ${res.locals.csrfToken}`);
+    logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
     next();
   },
-  (req, res, next) => {
-    // Wrap doubleCsrfProtection to log errors
-    doubleCsrfProtection(req, res, (err) => {
-      if (err) {
-        logger.warn(`[CSRF] doubleCsrfProtection error: ${err.message}`);
-      }
-      next(err);
-    });
-  },
+ 
   loginLimiter,
   [
     body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
@@ -1269,10 +1355,12 @@ app.post(
       const { email, password } = req.body;
       const normalizedEmail = email.toLowerCase();
 
+
       // Fetch account from DB
       const account = await db('staff_accounts')
         .where(db.raw('LOWER(email)'), normalizedEmail)
         .first();
+
 
       if (!account) {
         return res.status(401).render('login', {
@@ -1282,6 +1370,7 @@ app.post(
         });
       }
 
+
       if (account.disabled) {
         return res.status(403).render('login', {
           csrfToken: res.locals.csrfToken,
@@ -1290,7 +1379,9 @@ app.post(
         });
       }
 
+
       const isMatch = await bcrypt.compare(password, account.password_hash);
+
 
       if (!isMatch) {
         return res.status(401).render('login', {
@@ -1300,6 +1391,7 @@ app.post(
         });
       }
 
+
       // ✅ Success: Regenerate session and redirect
       req.session.regenerate(async err => {
         if (err) {
@@ -1307,14 +1399,14 @@ app.post(
           return next(new AppError('Session regeneration failed', 500));
         }
 
+
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
 
-        // Clear any previous CSRF secrets – let middleware handle it
-        delete req.session.csrfSecret;
 
         res.redirect(303, '/staff-dashboard');
       });
+
 
     } catch (err) {
       logger.error('Login error:', err.message);
@@ -1323,9 +1415,22 @@ app.post(
   }
 );
 
+// ✅ Staff Logout
+app.get('/logout', requireStaffSession, (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      logger.error('Logout error:', err);
+      return res.status(500).send('Logout failed.');
+    }
+    res.clearCookie('__Host-hc-session'); // Or your session cookie name
+    res.redirect('/login');
+  });
+});
+
+
 
 // Forgot Password - Show Request Form
-app.get('/forgot-password', (req, res) => {
+app.get('/forgot-password', requireStaffSession, (req, res) => {
   const csrfToken = res.locals.csrfToken;
   const cspNonce = res.locals.cspNonce;
 
@@ -1336,7 +1441,7 @@ app.get('/forgot-password', (req, res) => {
 });
 
 // Forgot Password - Handle Email Submission
-app.post('/forgot-password', [
+app.post('/forgot-password', requireStaffSession, [
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
 ], validateRequest, async (req, res, next) => {
   try {
@@ -1386,7 +1491,7 @@ app.post('/forgot-password', [
 });
 
 // GET: Password Reset Form - Displays form to reset password using token
-app.get('/reset-password', (req, res) => {
+app.get('/reset-password', requireStaffSession, (req, res) => {
   const token = req.query.token;
   const csrfToken = res.locals.csrfToken;
 
@@ -1408,8 +1513,8 @@ app.get('/reset-password', (req, res) => {
 });
 
 // POST: Handle password reset form submission
-app.post('/reset-password', [
-  body('newPassword')
+app.post('/reset-password', requireStaffSession, [
+  body('newPassword') 
     .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   body('confirmPassword')
     .custom((value, { req }) => {
@@ -1478,16 +1583,9 @@ app.post('/reset-password', [
   }
 });
 
-// 🔐 Staff Authentication Middleware
-const requireStaffAuth = (req, res, next) => {
-  if (req.session && req.session.staffId) {
-    return next();
-  }
-  res.redirect('/login');
-};
 
 // ✅ Change Password - GET
-app.get('/change-password', requireStaffAuth, (req, res) => {
+app.get('/change-password', requireStaffSession, (req, res) => {
   const token = res.locals.csrfToken;
   res.render('change-password', {
     csrfToken: token,
@@ -1497,7 +1595,7 @@ app.get('/change-password', requireStaffAuth, (req, res) => {
 
 
 // ✅ Change Password - POST
-app.post('/change-password', requireStaffAuth, [
+app.post('/change-password', requireStaffSession, [
   body('old_password').isString().notEmpty().withMessage('Current password is required'),
   body('new_password')
     .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
@@ -1564,7 +1662,7 @@ app.post('/change-password', requireStaffAuth, [
 
 
 // ✅ Password Reset Form - Added for token-based password reset
-app.get('/reset-password', (req, res) => {
+app.get('/reset-password', requireStaffSession, (req, res) => {
   const token = req.query.token;
   const csrfToken = res.locals.csrfToken;
   
@@ -1645,7 +1743,7 @@ app.get('/reset-password', (req, res) => {
 });
 
 // Staff Dashboard Route
-app.get('/staff-dashboard', requireStaffAuth, async (req, res, next) => {
+app.get('/staff-dashboard', requireStaffSession, async (req, res, next) => {
   try {
     const staffId = req.session.staffId;
     const monthParam = req.query.month;
@@ -1763,7 +1861,7 @@ const checkProjectAccess = async (req, res, next) => {
 };
 
 // ✅ Route: /project-dashboard
-app.get('/project-dashboard', requireStaffAuth, checkProjectAccess, async (req, res, next) => {
+app.get('/project-dashboard', requireStaffSession, checkProjectAccess, async (req, res, next) => {
   try {
     const projectId = req.projectId;
     const monthParam = req.query.month;
@@ -1837,7 +1935,7 @@ app.get('/project-dashboard', requireStaffAuth, checkProjectAccess, async (req, 
 
 
 // Get projects accessible to current staff
-app.get('/api/accessible-projects', requireStaffAuth, async (req, res, next) => {
+app.get('/api/accessible-projects', requireStaffSession, async (req, res, next) => {
   try {
     const staffId = req.session.staffId;
     const projects = await db('projects')
