@@ -1369,61 +1369,28 @@ function validateForm() {
 // Data fetching with enhanced error handling
 async function fetchAllocationData() {
   try {
-    let staffJson = mockStaff;
-    let projectsJson = mockProjects;
+    const [staffRes, projectsRes] = await Promise.all([
+      fetch('https://donate.harvestcallafrica.org/staff', { credentials: 'include' }),
+      fetch('https://donate.harvestcallafrica.org/projects', { credentials: 'include' })
+    ]);
 
-    // Fetch Staff
-    try {
-      const staffRes = await fetch('https://donate.harvestcallafrica.org/staff', {
-        credentials: 'include'
-      });
-      if (staffRes.ok) {
-        staffJson = await staffRes.json();
-        if (!Array.isArray(staffJson)) staffJson = mockStaff;
-      } else {
-        console.warn('Staff fetch returned non-OK status:', staffRes.status);
-      }
-    } catch (err) {
-      console.error('❌ Staff fetch failed:', err.message);
-    }
+    if (!staffRes.ok || !projectsRes.ok) throw new Error('Fetch failed');
 
-    // Fetch Projects
-    try {
-      const projectsRes = await fetch('https://donate.harvestcallafrica.org/projects', {
-        credentials: 'include'
-      });
-      if (projectsRes.ok) {
-        projectsJson = await projectsRes.json();
-        if (!Array.isArray(projectsJson)) projectsJson = mockProjects;
-      } else {
-        console.warn('Projects fetch returned non-OK status:', projectsRes.status);
-      }
-    } catch (err) {
-      console.error('❌ Projects fetch failed:', err.message);
-    }
+    staffMembers = await staffRes.json();
+    projects = await projectsRes.json();
 
-    // Set final values
-    staffMembers = staffJson.length > 0 ? staffJson : mockStaff;
-    projects = projectsJson.length > 0 ? projectsJson : mockProjects;
+    // Extra validation
+    if (!Array.isArray(staffMembers) || staffMembers.length === 0) staffMembers = mockStaff;
+    if (!Array.isArray(projects) || projects.length === 0) projects = mockProjects;
 
-    // Log final results
-    console.log('Final staffMembers:', staffMembers);
-    console.log('Final projects:', projects);
-
-    // Show user feedback if fallback occurred
-    if (staffMembers === mockStaff && projects === mockProjects) {
-        showError('allocation', 'Failed to load allocation options. Using default values.');
-    }
-
-  } catch (error) {
-    console.warn('⚠️ Unexpected error loading allocation data:', error.message);
+  } catch (err) {
     staffMembers = mockStaff;
     projects = mockProjects;
-    showError('allocation', 'Failed to load allocation options. Using default values.');
   } finally {
     populateAllocationList(currentAllocationType);
   }
 }
+
 
 // Accessible list population
 function populateAllocationList(type, searchTerm = '') {
