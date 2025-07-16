@@ -8,25 +8,6 @@
     <!-- Expose CSRF token to client-side JS -->
     <script nonce="<%= cspNonce %>">
       window.csrfToken = "<%= csrfToken %>";
-
-      // ✅ Automatically attach CSRF token to all fetch POST requests
-  const originalFetch = window.fetch;
-  window.fetch = function(url, options = {}) {
-    const token = window.csrfToken;
-    if (options.method && options.method.toUpperCase() !== 'GET') {
-      options.headers = {
-        ...options.headers,
-        'X-CSRF-Token': token
-      };
-    }
-    return originalFetch(url, options);
-  };
-
-  // ✅ Same for axios (if you use it)
-  if (window.axios) {
-    window.axios.defaults.headers.post['X-CSRF-Token'] = window.csrfToken;
-    window.axios.defaults.withCredentials = true;
-  }
     </script>
     <style>
         :root {
@@ -753,24 +734,14 @@
                     </div>
                 </div>
                 
-                <!-- Staff Allocation Dropdown -->
-<div class="custom-dropdown" id="staff-dropdown">
-  <div class="dropdown-header">
-    <input type="text" class="dropdown-search" id="staff-search" placeholder="Search staff" aria-label="Search staff">
-    <div class="dropdown-icon"><i class="fas fa-search"></i></div>
-  </div>
-  <div class="dropdown-list" id="staff-list"></div>
-</div>
-
-<!-- Project Allocation Dropdown -->
-<div class="custom-dropdown" id="project-dropdown">
-  <div class="dropdown-header">
-    <input type="text" class="dropdown-search" id="project-search" placeholder="Search projects" aria-label="Search projects">
-    <div class="dropdown-icon"><i class="fas fa-search"></i></div>
-  </div>
-  <div class="dropdown-list" id="project-list"></div>
-</div>
-
+                <div class="custom-dropdown" id="allocation-dropdown">
+                    <div class="dropdown-header">
+                        <input type="text" class="dropdown-search" id="allocation-search" placeholder="Search staff or projects..." aria-label="Search for staff or projects">
+                        <div class="dropdown-icon">
+                            <i class="fas fa-search"></i>
+                        </div>
+                    </div>
+                    <div class="dropdown-list" id="allocation-list">
                         <!-- Options will be populated by JavaScript -->
                     </div>
                 </div>
@@ -1290,492 +1261,373 @@
     </div>
 
     <script nonce="<%= cspNonce %>">
-        const FRONTEND_BASE_URL = '<%= FRONTEND_BASE_URL %>';
-        const API_URL = '<%= API_URL %>' || '<%= FRONTEND_BASE_URL %>';
+const FRONTEND_BASE_URL = '<%= FRONTEND_BASE_URL %>';
+const API_URL = '<%= API_URL %>' || FRONTEND_BASE_URL;
 
-        // Fetch CSRF token before donation
-async function fetchCsrfToken() {
-  try {
-    const response = await fetch(`${API_URL}/csrf-token`, {
-      method: 'GET',
-      credentials: 'include'
-    });
-    const data = await response.json();
-    console.log('✅ CSRF token fetched:', data.csrfToken);
-  } catch (error) {
-    console.warn('⚠️ Failed to fetch CSRF token:', error.message);
-  }
-}
+// Data and state management
+let currentAllocationType = 'staff';
+let selectedAllocation = null;
+let staffMembers = [];
+let projects = [];
 
-        // Current allocation type
-        let currentAllocationType = 'staff';
-        let selectedStaff = null;
-        let selectedProject = null;
-        let staffMembers = [];
-        let projects = [];
+// Enhanced mock data with 4 items each
+const mockStaff = [
+    { id: 1, name: "Chinwe Okonkwo" },
+    { id: 2, name: "Emeka Adebayo" },
+    { id: 3, name: "Amina Mohammed" },
+    { id: 4, name: "Tunde Okafor" }
+];
+const mockProjects = [
+    { id: 101, name: "Clean Water Initiative" },
+    { id: 102, name: "Youth Tech Program" },
+    { id: 103, name: "Reforestation Project" },
+    { id: 104, name: "Mobile Health Clinic" }
+];
 
-        // Mock data for offline preview
-        const mockStaff = [
-            { id: 1, name: "Chinwe Okonkwo" },
-            { id: 2, name: "Emeka Adebayo" },
-            { id: 3, name: "Amina Mohammed" },
-            { id: 4, name: "Tunde Okafor" }
-        ];
-        
-        const mockProjects = [
-            { id: 101, name: "Clean Water Initiative" },
-            { id: 102, name: "Youth Tech Program" },
-            { id: 103, name: "Reforestation Project" },
-            { id: 104, name: "Mobile Health Clinic" }
-        ];
-
-        // DOM references
-        const allocationBtns = document.querySelectorAll('.allocation-btn');
-        const allocationList = document.getElementById('allocation-list');
-        const allocationSearch = document.getElementById('allocation-search');
-        const allocationDropdown = document.getElementById('allocation-dropdown');
-        const loadingIndicator = document.getElementById('loading');
-        const donateButton = document.getElementById('donate-button');
-
-        // Helper functions for error handling
-        function showError(fieldId, message) {
-            const errorDiv = document.getElementById(`${fieldId}-error`);
-            if (errorDiv) {
-                errorDiv.textContent = message;
-            }
-            
-            const field = document.getElementById(fieldId);
-            if (field) {
-                field.classList.add('input-error');
-            }
-        }
-
-        function clearError(fieldId) {
-            const errorDiv = document.getElementById(`${fieldId}-error`);
-            if (errorDiv) {
-                errorDiv.textContent = '';
-            }
-            
-            const field = document.getElementById(fieldId);
-            if (field) {
-                field.classList.remove('input-error');
-            }
-        }
-
-        function validateForm() {
-            let isValid = true;
-            
-            // Validate name
-            const name = document.getElementById('full-name').value.trim();
-            if (!name) {
-                showError('name', 'Please enter your full name');
-                isValid = false;
-            } else {
-                clearError('name');
-            }
-            
-            // Validate email
-            const email = document.getElementById('email').value.trim();
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!email) {
-                showError('email', 'Please enter your email address');
-                isValid = false;
-            } else if (!emailRegex.test(email)) {
-                showError('email', 'Please enter a valid email address');
-                isValid = false;
-            } else {
-                clearError('email');
-            }
-            
-            // Validate phone
-            const phone = document.getElementById('phone').value.trim();
-            if (!phone) {
-                showError('phone', 'Please enter your phone number');
-                isValid = false;
-            } else {
-                clearError('phone');
-            }
-            
-            // Validate amount
-            const selectedAmountBtn = document.querySelector('.amount-btn.active');
-            const customAmount = document.getElementById('custom-amount-input').value;
-            if (!selectedAmountBtn && !customAmount) {
-                showError('amount', 'Please select or enter a donation amount');
-                isValid = false;
-            } else if (customAmount && parseFloat(customAmount) <= 0) {
-                showError('amount', 'Amount must be greater than zero');
-                isValid = false;
-            } else {
-                clearError('amount');
-            }
-            
-            return isValid;
-        }
-
-        // Helper to fetch and cache allocation data
-        async function fetchAllocationData() {
-            try {
-                // Try to fetch from local server
-                const [staffRes, projectsRes] = await Promise.all([
-                    fetch('https://donate.harvestcallafrica.org/staff'),
-                    fetch('https://donate.harvestcallafrica.org/projects')
-                ]);
-
-                // Check for HTTP errors
-                if (!staffRes.ok) throw new Error(`Staff fetch failed: ${staffRes.status}`);
-                if (!projectsRes.ok) throw new Error(`Projects fetch failed: ${projectsRes.status}`);
-                
-                // Parse JSON
-                staffMembers = await staffRes.json();
-                projects = await projectsRes.json();
-            } catch (err) {
-                // Use mock data
-                staffMembers = mockStaff;
-                projects = mockProjects;
-            } finally {
-                // Always populate the list
-                populateAllocationList(currentAllocationType);
-            }
-        }
-
-        // Populate allocation list
-        function populateAllocationList(type, searchTerm = '') {
-            if (!allocationList) return;
-            
-            allocationList.innerHTML = '';
-            const items = type === 'staff' ? staffMembers : projects;
-            
-            // Filter items based on search term
-            const filteredItems = items.filter(item => 
-                item.name.toLowerCase().includes((searchTerm || '').toLowerCase())
-            );
-            
-            if (filteredItems.length > 0) {
-                filteredItems.forEach(item => {
-                    const option = document.createElement('div');
-                    option.className = 'dropdown-option';
-                    option.tabIndex = 0;
-                    option.setAttribute('role', 'option');
-                    
-                    if (selectedAllocation && 
-                        selectedAllocation.id === item.id && 
-                        selectedAllocation.type === type) {
-                        option.classList.add('selected');
-                        option.setAttribute('aria-selected', 'true');
-                    }
-                    
-                    option.dataset.id = item.id;
-                    option.dataset.type = type;
-                    option.innerHTML = `<strong>${item.name}</strong>`;
-                    
-                    option.addEventListener('click', () => {
-                        document.querySelectorAll('.dropdown-option').forEach(o => {
-                            o.classList.remove('selected');
-                            o.setAttribute('aria-selected', 'false');
-                        });
-                        option.classList.add('selected');
-                        option.setAttribute('aria-selected', 'true');
-                        selectedAllocation = {
-                            type: type,
-                            id: item.id,
-                            name: item.name
-                        };
-                        allocationSearch.placeholder = item.name;
-                        allocationList.classList.remove('visible');
-                    });
-                    
-                    // Add keyboard support
-                    option.addEventListener('keydown', (e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            option.click();
-                        }
-                    });
-                    
-                    allocationList.appendChild(option);
-                });
-            } else {
-                const noResults = document.createElement('div');
-                noResults.className = 'no-results';
-                noResults.textContent = 'No matching items found';
-                allocationList.appendChild(noResults);
-            }
-        }
-
-        function populateDropdown(listId, searchInputId, items, selectionCallback) {
-  const list = document.getElementById(listId);
-  const searchInput = document.getElementById(searchInputId);
-  if (!list || !searchInput) return;
-
-  list.innerHTML = '';
-
-  const searchTerm = searchInput.value.trim().toLowerCase();
-  const filtered = items.filter(item => item.name.toLowerCase().includes(searchTerm));
-
-  if (filtered.length === 0) {
-    const noResult = document.createElement('div');
-    noResult.className = 'no-results';
-    noResult.textContent = 'No matching items found';
-    list.appendChild(noResult);
-    return;
-  }
-
-  filtered.forEach(item => {
-    const option = document.createElement('div');
-    option.className = 'dropdown-option';
-    option.tabIndex = 0;
-    option.dataset.id = item.id;
-    option.textContent = item.name;
-
-    option.addEventListener('click', () => {
-      list.querySelectorAll('.dropdown-option').forEach(opt => opt.classList.remove('selected'));
-      option.classList.add('selected');
-      selectionCallback(item); // update selectedStaff or selectedProject
-      list.classList.remove('visible');
-    });
-
-    list.appendChild(option);
-  });
-}
-
-
-        // Initialize allocation functionality
-        function initAllocation() {
-  // Staff dropdown
-  const staffList = document.getElementById('staff-list');
-  const staffSearch = document.getElementById('staff-search');
-
-  staffSearch.addEventListener('input', () => {
-    populateDropdown('staff-list', 'staff-search', staffMembers, (item) => {
-      selectedStaff = item;
-    });
-  });
-
-  staffSearch.addEventListener('focus', () => {
-    staffList.classList.add('visible');
-    populateDropdown('staff-list', 'staff-search', staffMembers, (item) => {
-      selectedStaff = item;
-    });
-  });
-
-  // Project dropdown
-  const projectList = document.getElementById('project-list');
-  const projectSearch = document.getElementById('project-search');
-
-  projectSearch.addEventListener('input', () => {
-    populateDropdown('project-list', 'project-search', projects, (item) => {
-      selectedProject = item;
-    });
-  });
-
-  projectSearch.addEventListener('focus', () => {
-    projectList.classList.add('visible');
-    populateDropdown('project-list', 'project-search', projects, (item) => {
-      selectedProject = item;
-    });
-  });
-
-  // Hide lists when clicking outside
-  document.addEventListener('click', e => {
-    if (!staffList.contains(e.target) && !staffSearch.contains(e.target)) {
-      staffList.classList.remove('visible');
-    }
-    if (!projectList.contains(e.target) && !projectSearch.contains(e.target)) {
-      projectList.classList.remove('visible');
-    }
-  });
-}
-
-
-        // Initialize currency toggle
-        function initCurrency() {
-            const currencyBtns = document.querySelectorAll('.currency-btn');
-            const currencySymbol = document.getElementById('currency-symbol');
-            const ngnAmounts = document.querySelectorAll('.amount-btn:not(.usd-amount)');
-            const usdAmounts = document.querySelectorAll('.usd-amount');
-            
-            currencyBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    currencyBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    const currency = btn.dataset.currency;
-                    
-                    if (currency === 'NGN') {
-                        ngnAmounts.forEach(el => el.style.display = 'flex');
-                        usdAmounts.forEach(el => el.style.display = 'none');
-                        currencySymbol.textContent = '₦';
-                    } else {
-                        ngnAmounts.forEach(el => el.style.display = 'none');
-                        usdAmounts.forEach(el => el.style.display = 'flex');
-                        currencySymbol.textContent = '$';
-                    }
-                });
-                
-                // Add keyboard support
-                btn.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        btn.click();
-                    }
-                });
-            });
-        }
-
-        // Initialize donation type toggle
-        function initDonationType() {
-            const typeBtns = document.querySelectorAll('.type-btn');
-            
-            typeBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    typeBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                });
-                
-                // Add keyboard support
-                btn.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        btn.click();
-                    }
-                });
-            });
-        }
-
-        // Initialize amount selection
-        function initAmountSelection() {
-            const amountBtns = document.querySelectorAll('.amount-btn');
-            const customAmountInput = document.getElementById('custom-amount-input');
-            
-            amountBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    amountBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    customAmountInput.value = '';
-                    clearError('amount');
-                });
-                
-                // Add keyboard support
-                btn.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        btn.click();
-                    }
-                });
-            });
-            
-            customAmountInput.addEventListener('focus', () => {
-                amountBtns.forEach(b => b.classList.remove('active'));
-                clearError('amount');
-            });
-        }
-
-        // Initialize donate button with payment functionality
-        function initDonateButton() {
-            donateButton.addEventListener('click', async () => {
-  if (!validateForm()) return;
-
-  // Disable button and show loading
-  donateButton.disabled = true;
-  loadingIndicator.style.display = 'block';
-
-  // Collect form values
-  const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
-  const type = document.querySelector('.type-btn.active')?.dataset.type;
-  const selectedAmountBtn = document.querySelector('.amount-btn.active');
-  const customAmount = document.getElementById('custom-amount-input')?.value;
-  let amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
-  const name = document.getElementById('full-name')?.value;
-  const email = document.getElementById('email')?.value;
-  const countryCode = document.getElementById('country-code').value;
-  const phoneNumber = document.getElementById('phone').value;
-  const phone = countryCode + phoneNumber;
-
-  // Prepare allocation data
-    const staffId = selectedStaff?.id || null;
-    const projectId = selectedProject?.id || null;
-
-// Prepare payload for payment initialization
-const payload = {
-  email: email,
-  amount: parseInt(amount),
-  currency: currency,
-  metadata: {
-    donorName: name,
-    donationType: type,
-    staffId: staffId,
-    projectId: projectId,
-    phone: phone
-  },
-  _csrf: window.csrfToken // ✅ CSRF token in body
+// Cache DOM references
+const domRefs = {
+    allocationBtns: document.querySelectorAll('.allocation-btn'),
+    allocationList: document.getElementById('allocation-list'),
+    allocationSearch: document.getElementById('allocation-search'),
+    allocationDropdown: document.getElementById('allocation-dropdown'),
+    loadingIndicator: document.getElementById('loading'),
+    donateButton: document.getElementById('donate-button'),
+    currencySymbol: document.getElementById('currency-symbol'),
+    nameInput: document.getElementById('full-name'),
+    emailInput: document.getElementById('email'),
+    phoneInput: document.getElementById('phone'),
+    customAmount: document.getElementById('custom-amount-input'),
+    countryCode: document.getElementById('country-code')
 };
 
-  try {
-    const response = await fetch(`${API_URL}/initialize-payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': window.csrfToken // ✅ CSRF token in header
-      },
-      body: JSON.stringify(payload),
-      credentials: 'include'
+// Error handling utilities
+function showError(fieldId, message) {
+    const errorDiv = document.getElementById(`${fieldId}-error`);
+    const field = document.getElementById(fieldId);
+    
+    if (errorDiv) errorDiv.textContent = message;
+    if (field) field.classList.add('input-error');
+}
+
+function clearError(fieldId) {
+    const errorDiv = document.getElementById(`${fieldId}-error`);
+    const field = document.getElementById(fieldId);
+    
+    if (errorDiv) errorDiv.textContent = '';
+    if (field) field.classList.remove('input-error');
+}
+
+// Form validation
+function validateForm() {
+    let isValid = true;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // Name validation
+    if (!domRefs.nameInput.value.trim()) {
+        showError('name', 'Please enter your full name');
+        isValid = false;
+    } else {
+        clearError('name');
+    }
+
+    // Email validation
+    const email = domRefs.emailInput.value.trim();
+    if (!email) {
+        showError('email', 'Please enter your email address');
+        isValid = false;
+    } else if (!emailRegex.test(email)) {
+        showError('email', 'Please enter a valid email address');
+        isValid = false;
+    } else {
+        clearError('email');
+    }
+
+    // Phone validation
+    if (!domRefs.phoneInput.value.trim()) {
+        showError('phone', 'Please enter your phone number');
+        isValid = false;
+    } else {
+        clearError('phone');
+    }
+
+    // Amount validation
+    const selectedAmountBtn = document.querySelector('.amount-btn.active');
+    const customAmount = domRefs.customAmount.value;
+    if (!selectedAmountBtn && !customAmount) {
+        showError('amount', 'Please select or enter a donation amount');
+        isValid = false;
+    } else if (customAmount && parseFloat(customAmount) <= 0) {
+        showError('amount', 'Amount must be greater than zero');
+        isValid = false;
+    } else {
+        clearError('amount');
+    }
+
+    return isValid;
+}
+
+// Data fetching with enhanced error handling
+async function fetchAllocationData() {
+    try {
+        const [staffRes, projectsRes] = await Promise.all([
+            fetch('https://donate.harvestcallafrica.org/staff'),
+            fetch('https://donate.harvestcallafrica.org/projects')
+        ]);
+
+        staffMembers = staffRes.ok ? await staffRes.json() : mockStaff;
+        projects = projectsRes.ok ? await projectsRes.json() : mockProjects;
+    } catch (error) {
+        console.warn('⚠️ Using mock data due to error:', error.message);
+        staffMembers = mockStaff;
+        projects = mockProjects;
+    } finally {
+        populateAllocationList(currentAllocationType);
+    }
+}
+
+// Accessible list population
+function populateAllocationList(type, searchTerm = '') {
+    if (!domRefs.allocationList) return;
+    
+    domRefs.allocationList.innerHTML = '';
+    const items = type === 'staff' ? staffMembers : projects;
+    const term = (searchTerm || '').toLowerCase();
+    const filteredItems = term 
+        ? items.filter(item => item.name.toLowerCase().includes(term))
+        : items;
+
+    if (filteredItems.length === 0) {
+        const noResults = document.createElement('div');
+        noResults.className = 'no-results';
+        noResults.textContent = 'No matching items found';
+        domRefs.allocationList.appendChild(noResults);
+        return;
+    }
+
+    filteredItems.forEach(item => {
+        const option = document.createElement('div');
+        option.className = 'dropdown-option';
+        option.tabIndex = 0;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', 'false');
+        option.dataset.id = item.id;
+        option.dataset.type = type;
+        option.innerHTML = `<strong>${item.name}</strong>`;
+
+        // Selection handler
+        option.addEventListener('click', () => selectAllocation(item, type));
+        option.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') selectAllocation(item, type)
+        });
+
+        domRefs.allocationList.appendChild(option);
+    });
+}
+
+function selectAllocation(item, type) {
+    document.querySelectorAll('.dropdown-option').forEach(o => {
+        o.classList.remove('selected');
+        o.setAttribute('aria-selected', 'false');
+    });
+    
+    selectedAllocation = {
+        type: type,
+        id: item.id,
+        name: item.name
+    };
+    
+    domRefs.allocationSearch.placeholder = item.name;
+    domRefs.allocationList.classList.remove('visible');
+}
+
+// Initialization functions with keyboard support
+function initAllocation() {
+    domRefs.allocationBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            domRefs.allocationBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentAllocationType = btn.dataset.type;
+            domRefs.allocationSearch.placeholder = 
+                currentAllocationType === 'staff' ? 'Search staff...' : 'Search projects...';
+            domRefs.allocationSearch.value = '';
+            populateAllocationList(currentAllocationType);
+            domRefs.allocationList.classList.add('visible');
+        });
+        
+        btn.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') btn.click();
+        });
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
-    }
+    domRefs.allocationSearch.addEventListener('input', () => {
+        populateAllocationList(currentAllocationType, domRefs.allocationSearch.value);
+    });
 
-    const data = await response.json();
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#allocation-dropdown')) {
+            domRefs.allocationList.classList.remove('visible');
+        }
+    });
+}
 
-    if (data.authorization_url) {
-      window.location.href = data.authorization_url;
-    } else {
-      showError('amount', 'Payment initialization failed. Please try again.');
-    }
-  } catch (error) {
-    console.error('🚨 Payment initialization failed:', error);
-    showError('email', 'An error occurred while processing your payment.');
-  } finally {
-    donateButton.disabled = false;
-    loadingIndicator.style.display = 'none';
-  }
-}); // ✅ Correctly closes the click event listener
-    }
+function initCurrency() {
+    const currencyBtns = document.querySelectorAll('.currency-btn');
+    const ngnAmounts = document.querySelectorAll('.amount-btn:not(.usd-amount)');
+    const usdAmounts = document.querySelectorAll('.usd-amount');
+    
+    currencyBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            currencyBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const currency = btn.dataset.currency;
+            
+            if (currency === 'NGN') {
+                ngnAmounts.forEach(el => el.style.display = 'flex');
+                usdAmounts.forEach(el => el.style.display = 'none');
+                domRefs.currencySymbol.textContent = '₦';
+            } else {
+                ngnAmounts.forEach(el => el.style.display = 'none');
+                usdAmounts.forEach(el => el.style.display = 'flex');
+                domRefs.currencySymbol.textContent = '$';
+            }
+        });
+        
+        btn.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') btn.click();
+        });
+    });
+}
 
-        document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    await fetchCsrfToken(); // Ensure CSRF token is set
-  } catch (err) {
-    console.error('Failed during CSRF initialization:', err);
-    // Optionally disable donate button or show warning
-  }
+function initDonationType() {
+    document.querySelectorAll('.type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+        
+        btn.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') btn.click();
+        });
+    });
+}
 
-  // Initialize UI components
-  initCurrency();
-  initDonationType();
-  initAmountSelection();
-  initAllocation();
-  initDonateButton();
+function initAmountSelection() {
+    document.querySelectorAll('.amount-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            domRefs.customAmount.value = '';
+            clearError('amount');
+        });
+        
+        btn.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') btn.click();
+        });
+    });
+    
+    domRefs.customAmount.addEventListener('focus', () => {
+        document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
+        clearError('amount');
+    });
+}
 
-  // Fetch allocation data
-  fetchAllocationData();
-
-  // Clear errors on input
-  document.getElementById('full-name').addEventListener('input', () => clearError('name'));
-  document.getElementById('email').addEventListener('input', () => clearError('email'));
-  document.getElementById('phone').addEventListener('input', () => clearError('phone'));
-  document.getElementById('custom-amount-input').addEventListener('input', () => clearError('amount'));
-});
-
-        // Fetch CSRF token before donation
-        async function fetchCsrfToken() {
-         try {
-            const res = await fetch(`${API_URL}/csrf-token`, {
+// CSRF token handling
+async function fetchCsrfToken() {
+    try {
+        const response = await fetch(`${API_URL}/csrf-token`, {
             method: 'GET',
             credentials: 'include'
         });
-            await res.text(); // Just to ensure the cookie is received
-            console.log('✅ CSRF token fetched and cookie set');
-            } catch (error) {
-            console.warn('⚠️ Failed to fetch CSRF token:', error.message);
-      }
+        const data = await response.json();
+        window.csrfToken = data.csrfToken;
+        console.log('✅ CSRF token fetched');
+    } catch (error) {
+        console.warn('⚠️ Failed to fetch CSRF token:', error.message);
     }
-    </script>
+}
+
+// Payment initialization
+async function initDonateButton() {
+    domRefs.donateButton.addEventListener('click', async () => {
+        if (!validateForm()) return;
+
+        // Disable button during processing
+        domRefs.donateButton.disabled = true;
+        domRefs.loadingIndicator.style.display = 'block';
+
+        try {
+            // Collect form data
+            const currency = document.querySelector('.currency-btn.active')?.dataset.currency;
+            const type = document.querySelector('.type-btn.active')?.dataset.type;
+            const selectedAmountBtn = document.querySelector('.amount-btn.active');
+            const customAmount = domRefs.customAmount.value;
+            const amount = selectedAmountBtn ? selectedAmountBtn.dataset.amount : customAmount;
+            const phone = domRefs.countryCode.value + domRefs.phoneInput.value;
+
+            // Prepare payload
+            const payload = {
+                email: domRefs.emailInput.value.trim(),
+                amount: Math.round(parseFloat(amount) * 100), // Convert to cents/kobo
+                currency: currency,
+                metadata: {
+                    donorName: domRefs.nameInput.value.trim(),
+                    donationType: type,
+                    staffId: selectedAllocation?.type === 'staff' ? selectedAllocation.id : null,
+                    projectId: selectedAllocation?.type === 'projects' ? selectedAllocation.id : null,
+                    phone: phone
+                },
+                _csrf: window.csrfToken
+            };
+
+            // Initiate payment
+            const response = await fetch(`${API_URL}/initialize-payment`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': window.csrfToken
+                },
+                body: JSON.stringify(payload),
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+
+            const data = await response.json();
+            if (data.authorization_url) {
+                window.location.href = data.authorization_url;
+            } else {
+                showError('amount', 'Payment initialization failed. Please try again.');
+            }
+        } catch (error) {
+            console.error('🚨 Payment error:', error);
+            showError('email', 'Payment processing error. Please try again.');
+        } finally {
+            domRefs.donateButton.disabled = false;
+            domRefs.loadingIndicator.style.display = 'none';
+        }
+    });
+}
+
+// Main initialization
+document.addEventListener('DOMContentLoaded', async () => {
+    await fetchCsrfToken();
+    initCurrency();
+    initDonationType();
+    initAmountSelection();
+    initAllocation();
+    initDonateButton();
+    await fetchAllocationData();
+
+    // Setup input validation clearing
+    const clearErrorOnInput = (fieldId) => () => clearError(fieldId);
+    domRefs.nameInput.addEventListener('input', clearErrorOnInput('name'));
+    domRefs.emailInput.addEventListener('input', clearErrorOnInput('email'));
+    domRefs.phoneInput.addEventListener('input', clearErrorOnInput('phone'));
+    domRefs.customAmount.addEventListener('input', clearErrorOnInput('amount'));
+});
+</script>
 </body>
 </html>
