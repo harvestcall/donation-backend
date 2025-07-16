@@ -411,6 +411,26 @@ app.get('/', (req, res, next) => {
   });
 });
 
+app.get('/thank-you', (req, res) => {
+  const { name, amount, currency, type, purpose } = req.query;
+
+
+  const sanitized = {
+    name: sanitizeHtml(name),
+    amount: sanitizeHtml(amount),
+    currency: sanitizeHtml(currency),
+    type: sanitizeHtml(type),
+    purpose: sanitizeHtml(purpose)
+  };
+
+
+  res.render('thank-you', {
+    cspNonce: res.locals.cspNonce,
+    ...sanitized
+  });
+});
+
+
 
   app.get('/debug/donations', requireAuth, async (req, res, next) => {
     try {
