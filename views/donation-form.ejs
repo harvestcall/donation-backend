@@ -1574,7 +1574,7 @@ async function initDonateButton() {
             // Prepare payload
             const payload = {
                 email: domRefs.emailInput.value.trim(),
-                amount: Math.round(parseFloat(amount) * 100), // Convert to cents/kobo
+                amount: Math.round(parseFloat(amount)), // already in full naira, e.g. 1000
                 currency: currency,
                 metadata: {
                     donorName: domRefs.nameInput.value.trim(),
