@@ -8,6 +8,25 @@
     <!-- Expose CSRF token to client-side JS -->
     <script nonce="<%= cspNonce %>">
       window.csrfToken = "<%= csrfToken %>";
+
+      // ✅ Automatically attach CSRF token to all fetch POST requests
+  const originalFetch = window.fetch;
+  window.fetch = function(url, options = {}) {
+    const token = window.csrfToken;
+    if (options.method && options.method.toUpperCase() !== 'GET') {
+      options.headers = {
+        ...options.headers,
+        'X-CSRF-Token': token
+      };
+    }
+    return originalFetch(url, options);
+  };
+
+  // ✅ Same for axios (if you use it)
+  if (window.axios) {
+    window.axios.defaults.headers.post['X-CSRF-Token'] = window.csrfToken;
+    window.axios.defaults.withCredentials = true;
+  }
     </script>
     <style>
         :root {
