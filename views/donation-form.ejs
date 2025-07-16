@@ -753,14 +753,24 @@
                     </div>
                 </div>
                 
-                <div class="custom-dropdown" id="allocation-dropdown">
-                    <div class="dropdown-header">
-                        <input type="text" class="dropdown-search" id="allocation-search" placeholder="Search staff or projects..." aria-label="Search for staff or projects">
-                        <div class="dropdown-icon">
-                            <i class="fas fa-search"></i>
-                        </div>
-                    </div>
-                    <div class="dropdown-list" id="allocation-list">
+                <!-- Staff Allocation Dropdown -->
+<div class="custom-dropdown" id="staff-dropdown">
+  <div class="dropdown-header">
+    <input type="text" class="dropdown-search" id="staff-search" placeholder="Search staff" aria-label="Search staff">
+    <div class="dropdown-icon"><i class="fas fa-search"></i></div>
+  </div>
+  <div class="dropdown-list" id="staff-list"></div>
+</div>
+
+<!-- Project Allocation Dropdown -->
+<div class="custom-dropdown" id="project-dropdown">
+  <div class="dropdown-header">
+    <input type="text" class="dropdown-search" id="project-search" placeholder="Search projects" aria-label="Search projects">
+    <div class="dropdown-icon"><i class="fas fa-search"></i></div>
+  </div>
+  <div class="dropdown-list" id="project-list"></div>
+</div>
+
                         <!-- Options will be populated by JavaScript -->
                     </div>
                 </div>
@@ -1299,7 +1309,8 @@ async function fetchCsrfToken() {
 
         // Current allocation type
         let currentAllocationType = 'staff';
-        let selectedAllocation = null;
+        let selectedStaff = null;
+        let selectedProject = null;
         let staffMembers = [];
         let projects = [];
 
@@ -1490,48 +1501,90 @@ async function fetchCsrfToken() {
             }
         }
 
+        function populateDropdown(listId, searchInputId, items, selectionCallback) {
+  const list = document.getElementById(listId);
+  const searchInput = document.getElementById(searchInputId);
+  if (!list || !searchInput) return;
+
+  list.innerHTML = '';
+
+  const searchTerm = searchInput.value.trim().toLowerCase();
+  const filtered = items.filter(item => item.name.toLowerCase().includes(searchTerm));
+
+  if (filtered.length === 0) {
+    const noResult = document.createElement('div');
+    noResult.className = 'no-results';
+    noResult.textContent = 'No matching items found';
+    list.appendChild(noResult);
+    return;
+  }
+
+  filtered.forEach(item => {
+    const option = document.createElement('div');
+    option.className = 'dropdown-option';
+    option.tabIndex = 0;
+    option.dataset.id = item.id;
+    option.textContent = item.name;
+
+    option.addEventListener('click', () => {
+      list.querySelectorAll('.dropdown-option').forEach(opt => opt.classList.remove('selected'));
+      option.classList.add('selected');
+      selectionCallback(item); // update selectedStaff or selectedProject
+      list.classList.remove('visible');
+    });
+
+    list.appendChild(option);
+  });
+}
+
+
         // Initialize allocation functionality
         function initAllocation() {
-            if (!allocationBtns.length) return;
-            
-            // Allocation type toggle
-            allocationBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    allocationBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    currentAllocationType = btn.dataset.type;
-                    allocationSearch.placeholder = currentAllocationType === 'staff' 
-                        ? 'Search staff...' 
-                        : 'Search projects...';
-                    allocationSearch.value = '';
-                    populateAllocationList(currentAllocationType);
-                    allocationList.classList.add('visible');
-                });
-                
-                // Add keyboard support
-                btn.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        btn.click();
-                    }
-                });
-            });
-            
-            // Search functionality
-            allocationSearch.addEventListener('input', () => {
-                populateAllocationList(currentAllocationType, allocationSearch.value);
-            });
-            
-            allocationSearch.addEventListener('focus', () => {
-                allocationList.classList.add('visible');
-                populateAllocationList(currentAllocationType, allocationSearch.value);
-            });
-            
-            document.addEventListener('click', e => {
-                if (!allocationDropdown.contains(e.target)) {
-                    allocationList.classList.remove('visible');
-                }
-            });
-        }
+  // Staff dropdown
+  const staffList = document.getElementById('staff-list');
+  const staffSearch = document.getElementById('staff-search');
+
+  staffSearch.addEventListener('input', () => {
+    populateDropdown('staff-list', 'staff-search', staffMembers, (item) => {
+      selectedStaff = item;
+    });
+  });
+
+  staffSearch.addEventListener('focus', () => {
+    staffList.classList.add('visible');
+    populateDropdown('staff-list', 'staff-search', staffMembers, (item) => {
+      selectedStaff = item;
+    });
+  });
+
+  // Project dropdown
+  const projectList = document.getElementById('project-list');
+  const projectSearch = document.getElementById('project-search');
+
+  projectSearch.addEventListener('input', () => {
+    populateDropdown('project-list', 'project-search', projects, (item) => {
+      selectedProject = item;
+    });
+  });
+
+  projectSearch.addEventListener('focus', () => {
+    projectList.classList.add('visible');
+    populateDropdown('project-list', 'project-search', projects, (item) => {
+      selectedProject = item;
+    });
+  });
+
+  // Hide lists when clicking outside
+  document.addEventListener('click', e => {
+    if (!staffList.contains(e.target) && !staffSearch.contains(e.target)) {
+      staffList.classList.remove('visible');
+    }
+    if (!projectList.contains(e.target) && !projectSearch.contains(e.target)) {
+      projectList.classList.remove('visible');
+    }
+  });
+}
+
 
         // Initialize currency toggle
         function initCurrency() {
@@ -1634,30 +1687,23 @@ async function fetchCsrfToken() {
   const phone = countryCode + phoneNumber;
 
   // Prepare allocation data
-  let staffId = null;
-  let projectId = null;
-  if (selectedAllocation) {
-    if (selectedAllocation.type === 'staff') {
-      staffId = selectedAllocation.id;
-    } else if (selectedAllocation.type === 'projects') {
-      projectId = selectedAllocation.id;
-    }
-  }
+    const staffId = selectedStaff?.id || null;
+    const projectId = selectedProject?.id || null;
 
-  // Prepare payload for payment initialization
-  const payload = {
-    email: email,
-    amount: parseInt(amount),
-    currency: currency,
-    metadata: {
-      donorName: name,
-      donationType: type,
-      staffId: staffId,
-      projectId: projectId,
-      phone: phone
-    },
-    _csrf: window.csrfToken // ✅ CSRF token in body
-  };
+// Prepare payload for payment initialization
+const payload = {
+  email: email,
+  amount: parseInt(amount),
+  currency: currency,
+  metadata: {
+    donorName: name,
+    donationType: type,
+    staffId: staffId,
+    projectId: projectId,
+    phone: phone
+  },
+  _csrf: window.csrfToken // ✅ CSRF token in body
+};
 
   try {
     const response = await fetch(`${API_URL}/initialize-payment`, {
