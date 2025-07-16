@@ -1620,41 +1620,51 @@ async function initDonateButton() {
 
 // Main initialization
 document.addEventListener('DOMContentLoaded', async () => {
-    await fetchCsrfToken();
-    initCurrency();
-    initDonationType();
-    initAmountSelection();
-    initAllocation();
-    initDonateButton();
+  await fetchCsrfToken();
+  initCurrency();
+  initDonationType();
+  initAmountSelection();
+  initAllocation();
+  initDonateButton();
 
-     
-    // DEBUG FETCHES
-fetch('https://donate.harvestcallafrica.org/staff')
-  .then(res => {
-    console.log('Staff response OK?', res.ok);
-    return res.text();
-  })
-  .then(text => console.log('Raw staff response:', text))
-  .catch(err => console.error('Staff fetch error:', err));
+  // DEBUG FETCHES
+  fetch('https://donate.harvestcallafrica.org/staff')
+    .then(res => {
+      console.log('Staff response OK?', res.ok);
+      return res.text();
+    })
+    .then(text => console.log('Raw staff response:', text))
+    .catch(err => console.error('Staff fetch error:', err));
 
-fetch('https://donate.harvestcallafrica.org/projects')
-  .then(res => {
-    console.log('Projects response OK?', res.ok);
-    return res.text();
-  })
-  .then(text => console.log('Raw projects response:', text))
-  .catch(err => console.error('Projects fetch error:', err));
+  fetch('https://donate.harvestcallafrica.org/projects')
+    .then(res => {
+      console.log('Projects response OK?', res.ok);
+      return res.text();
+    })
+    .then(text => console.log('Raw projects response:', text))
+    .catch(err => console.error('Projects fetch error:', err));
 
-    // Proceed with normal data fetching
-    await fetchAllocationData();
+  // ✅ Proceed with normal data fetching
+  await fetchAllocationData();
 
-    // Setup input validation clearing
-    const clearErrorOnInput = (fieldId) => () => clearError(fieldId);
-    domRefs.nameInput.addEventListener('input', clearErrorOnInput('name'));
-    domRefs.emailInput.addEventListener('input', clearErrorOnInput('email'));
-    domRefs.phoneInput.addEventListener('input', clearErrorOnInput('phone'));
-    domRefs.customAmount.addEventListener('input', clearErrorOnInput('amount'));
+  // ✅ Setup input validation clearing
+  const clearErrorOnInput = (fieldId) => () => clearError(fieldId);
+  domRefs.nameInput.addEventListener('input', clearErrorOnInput('name'));
+  domRefs.emailInput.addEventListener('input', clearErrorOnInput('email'));
+  domRefs.phoneInput.addEventListener('input', clearErrorOnInput('phone'));
+  domRefs.customAmount.addEventListener('input', clearErrorOnInput('amount'));
+
+  // ✅ Temporary debug: Show allocation list on focus
+  const searchInput = document.getElementById('allocation-search');
+  const listBox = document.getElementById('allocation-list');
+  if (searchInput && listBox) {
+    searchInput.addEventListener('focus', () => {
+      console.log('🔍 Search input focused');
+      listBox.classList.add('visible');
+    });
+  }
 });
+
 </script>
 </body>
 </html>
