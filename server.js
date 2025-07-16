@@ -164,7 +164,7 @@ const finalOptions = {
   }
 };
 
-const { doubleCsrfProtection } = doubleCsrf(finalOptions);
+const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
 
 app.use(doubleCsrfProtection);
 
