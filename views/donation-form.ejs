@@ -1374,7 +1374,7 @@ async function fetchAllocationData() {
 
     // Fetch Staff
     try {
-      const staffRes = await fetch('https://donate.harvestcallafrica.org/staff ', {
+      const staffRes = await fetch('https://donate.harvestcallafrica.org/staff', {
         credentials: 'include'
       });
       if (staffRes.ok) {
@@ -1389,7 +1389,7 @@ async function fetchAllocationData() {
 
     // Fetch Projects
     try {
-      const projectsRes = await fetch('https://donate.harvestcallafrica.org/projects ', {
+      const projectsRes = await fetch('https://donate.harvestcallafrica.org/projects', {
         credentials: 'include'
       });
       if (projectsRes.ok) {
@@ -1662,7 +1662,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
      
     // DEBUG FETCHES
-fetch('https://donate.harvestcallafrica.org/staff ')
+fetch('https://donate.harvestcallafrica.org/staff')
   .then(res => {
     console.log('Staff response OK?', res.ok);
     return res.text();
@@ -1670,7 +1670,7 @@ fetch('https://donate.harvestcallafrica.org/staff ')
   .then(text => console.log('Raw staff response:', text))
   .catch(err => console.error('Staff fetch error:', err));
 
-fetch('https://donate.harvestcallafrica.org/projects ')
+fetch('https://donate.harvestcallafrica.org/projects')
   .then(res => {
     console.log('Projects response OK?', res.ok);
     return res.text();
