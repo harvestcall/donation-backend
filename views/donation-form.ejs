@@ -1369,36 +1369,49 @@ function validateForm() {
 // Data fetching with enhanced error handling
 async function fetchAllocationData() {
   try {
-    const [staffRes, projectsRes] = await Promise.all([
-      fetch('https://donate.harvestcallafrica.org/staff ', { credentials: 'include' }),
-      fetch('https://donate.harvestcallafrica.org/projects ', { credentials: 'include' })
-    ]);
-
     let staffJson = mockStaff;
     let projectsJson = mockProjects;
 
-    if (staffRes.ok) {
-      try {
+    // Fetch Staff
+    try {
+      const staffRes = await fetch('https://donate.harvestcallafrica.org/staff ', {
+        credentials: 'include'
+      });
+      if (staffRes.ok) {
         staffJson = await staffRes.json();
-      } catch (e) {
-        console.warn('Failed to parse staff JSON:', e);
+        if (!Array.isArray(staffJson)) staffJson = mockStaff;
+      } else {
+        console.warn('Staff fetch returned non-OK status:', staffRes.status);
       }
+    } catch (err) {
+      console.error('❌ Staff fetch failed:', err.message);
     }
 
-    if (projectsRes.ok) {
-      try {
+    // Fetch Projects
+    try {
+      const projectsRes = await fetch('https://donate.harvestcallafrica.org/projects ', {
+        credentials: 'include'
+      });
+      if (projectsRes.ok) {
         projectsJson = await projectsRes.json();
-      } catch (e) {
-        console.warn('Failed to parse projects JSON:', e);
+        if (!Array.isArray(projectsJson)) projectsJson = mockProjects;
+      } else {
+        console.warn('Projects fetch returned non-OK status:', projectsRes.status);
       }
+    } catch (err) {
+      console.error('❌ Projects fetch failed:', err.message);
     }
 
+    console.log('Final staffMembers:', staffMembers);
+    console.log('Final projects:', projects);
+    
+    // Set final values
     staffMembers = staffJson.length > 0 ? staffJson : mockStaff;
     projects = projectsJson.length > 0 ? projectsJson : mockProjects;
 
   } catch (error) {
-    console.warn('⚠️ Network or unexpected error:', error.message);
-    staffMembers = mockStaff;  // Fallback to mock data
+    console.warn('⚠️ Unexpected error loading allocation data:', error.message);
+    staffMembers = mockStaff;
     projects = mockProjects;
   } finally {
     populateAllocationList(currentAllocationType);
