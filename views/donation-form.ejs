@@ -1639,6 +1639,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     initAmountSelection();
     initAllocation();
     initDonateButton();
+
+     // 🔍 Debug fetch goes here
+    fetch('https://donate.harvestcallafrica.org/staff ', { credentials: 'include' })
+      .then(res => {
+        console.log('Response OK?', res.ok);
+        return res.text();
+      })
+      .then(text => console.log('Raw response (staff):', text))
+      .catch(console.error);
+
+    fetch('https://donate.harvestcallafrica.org/projects ', { credentials: 'include' })
+        .then(res => {
+             console.log('Projects response OK?', res.ok);
+    return res.text();
+  })
+  .then(text => console.log('Raw response (projects):', text))
+  .catch(console.error);
+
+    // Proceed with normal data fetching
     await fetchAllocationData();
 
     // Setup input validation clearing
