@@ -1370,12 +1370,32 @@ function validateForm() {
 async function fetchAllocationData() {
     try {
         const [staffRes, projectsRes] = await Promise.all([
-            fetch('https://donate.harvestcallafrica.org/staff'),
-            fetch('https://donate.harvestcallafrica.org/projects')
+            fetch('https://donate.harvestcallafrica.org/staff ', { credentials: 'include' }),
+            fetch('https://donate.harvestcallafrica.org/projects ', { credentials: 'include' })
         ]);
 
-        staffMembers = staffRes.ok ? await staffRes.json() : mockStaff;
-        projects = projectsRes.ok ? await projectsRes.json() : mockProjects;
+        let staffJson = mockStaff;
+        let projectsJson = mockProjects;
+
+        if (staffRes.ok) {
+            try {
+                staffJson = await staffRes.json();
+            } catch (e) {
+                console.warn('Failed to parse staff JSON:', e);
+            }
+        }
+
+        if (projectsRes.ok) {
+            try {
+                projectsJson = await projectsRes.json();
+            } catch (e) {
+                console.warn('Failed to parse projects JSON:', e);
+            }
+        }
+
+        staffMembers = staffJson.length > 0 ? staffJson : mockStaff;
+        projects = projectsJson.length > 0 ? projectsJson : mockProjects;
+
     } catch (error) {
         console.warn('⚠️ Using mock data due to error:', error.message);
         staffMembers = mockStaff;
