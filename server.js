@@ -168,6 +168,13 @@ const { doubleCsrfProtection } = doubleCsrf(finalOptions);
 
 app.use(doubleCsrfProtection);
 
+// ✅ Make CSRF token available to views
+app.use((req, res, next) => {
+  res.locals.csrfToken = generateToken(req, res);
+  next();
+});
+
+
 // ✅ 6. Expose CSRF token to locals + set cookie – now guaranteed to work
 app.use((req, res, next) => {
   try {
@@ -693,10 +700,9 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
 
 // Admin Login Form - GET
 app.get('/admin/login', (req, res) => {
-  const token = req.csrfToken(); // Generate token explicitly
   res.render('admin-login', {
+    csrfToken: res.locals.csrfToken,  // ✅ Get CSRF token from res.locals
     cspNonce: res.locals.cspNonce,
-    csrfToken: token,
     error: null
   });
 });
@@ -737,7 +743,7 @@ app.post(
 
     if (username !== adminUser || password !== adminPass) {
       return res.status(401).render('admin-login', {
-        csrfToken: req.csrfToken(),
+        csrfToken: res.locals.csrfToken,
         cspNonce: res.locals.cspNonce,
         error: 'Invalid username or password.'
       });
@@ -748,7 +754,7 @@ app.post(
       if (err) {
         logger.error('❌ Admin session regeneration failed:', err.message);
         return res.status(500).render('admin-login', {
-          csrfToken: req.csrfToken(),
+          csrfToken: res.locals.csrfToken,
           cspNonce: res.locals.cspNonce,
           error: 'Something went wrong. Please try again.'
         });
