@@ -373,7 +373,7 @@ app.get('/', (req, res, next) => {
   logger.debug('[ROUTE /] Rendering donation-form EJS');
   res.render('donation-form', {
   cspNonce: res.locals.cspNonce,
-  csrfToken: generateToken(res, req), // ← now generated at render time
+  csrfToken: generateCsrfToken(res, req), // ← now generated at render time
   FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL,
   API_URL: process.env.API_URL || process.env.FRONTEND_BASE_URL
 });
@@ -637,7 +637,7 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
 // Admin Login Form - GET
 app.get('/admin/login', (req, res) => {
   res.render('admin-login', {
-    csrfToken: generateToken(res, req), // ✅ Generate only when needed
+    csrfToken: generateCsrfToken(res, req), // ✅ Generate only when needed
     cspNonce: res.locals.cspNonce,
     error: null
   });
@@ -1274,7 +1274,7 @@ const assignments = selectedProjects.map(pid => ({
 app.get('/login', (req, res) => {
   res.render('staff-login', {
     cspNonce: res.locals.cspNonce,
-    csrfToken: generateToken(res, req), // ✅ Fresh token
+    csrfToken: generateCsrfToken(res, req), // ✅ Fresh token
     error: req.query.error || null
   });
 });
