@@ -166,6 +166,7 @@ const finalOptions = {
 
 // ✅ Initialize CSRF protection
 const doubleCsrfUtilities = doubleCsrf(finalOptions);
+console.log('✅ doubleCsrfUtilities:', Object.keys(doubleCsrfUtilities));
 const doubleCsrfProtection = doubleCsrfUtilities.doubleCsrfProtection;
 const generateToken = doubleCsrfUtilities.generateToken;
 
