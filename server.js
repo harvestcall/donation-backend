@@ -144,7 +144,8 @@ app.use(session({
   store: new pgSession({
     pool: pgPool,
     tableName: 'session',
-    createTableIfMissing: true
+    createTableIfMissing: true,
+    pruneSessionInterval: 60 
   }),
   secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
   resave: false,
@@ -275,40 +276,6 @@ async function getDisplayName(type, id, db) {
 }
 
 
-// ✅ Auth middleware
-const requireAuth = (req, res, next) => {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith('Basic ')) {
-    return res.status(401)
-      .set('WWW-Authenticate', 'Basic realm="Dashboard"')
-      .send('Authentication required.');
-  }
-
-
-  const base64Credentials = auth.split(' ')[1];
-  let credentials;
-  try {
-    credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-  } catch (e) {
-    return res.status(400).send('Invalid authorization format.');
-  }
-
-
-  const [username, password] = credentials.split(':');
-  if (!username || !password) {
-    return res.status(400).send('Missing username or password.');
-  }
-
-
-  if (username === process.env.DASHBOARD_USER && password === process.env.DASHBOARD_PASS) {
-    return next();
-  }
-
-
-  return res.status(401).send('Access denied.');
-};
-
-
 // Sanitize and escape strings for safe HTML display
 function sanitizeHtml(input) {
   return DOMPurify.sanitize(validator.escape(input || ''));
@@ -360,7 +327,7 @@ app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
 // GET /csrf-test - For debugging CSRF token flow
 app.get('/csrf-test', (req, res) => {
-  const token = res.locals.csrfToken;
+  const token = generateToken(res, req);
   res.json({
     csrfToken: token,
     message: 'CSRF token generated and cookie set'
@@ -1086,6 +1053,8 @@ app.post('/admin/toggle-project/:id', requireAdminSession, async (req, res, next
 
 // GET: Show form to add a new project
 app.get('/admin/add-project', requireAdminSession, (req, res) => {
+  const token = generateToken(res, req); // ✅ move this OUTSIDE the string
+
   res.send(`
     <html>
       <head>
@@ -1101,10 +1070,8 @@ app.get('/admin/add-project', requireAdminSession, (req, res) => {
       </head>
       <body>
         <h2 style="text-align:center;">🛠 Add New Project</h2>
-        const token = res.locals.csrfToken;
-...
-<form method="POST" action="/admin/add-project">
-  <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
+        <form method="POST" action="/admin/add-project">
+          <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
           <input type="text" name="name" placeholder="Project Name" required />
           <textarea name="description" placeholder="Project Description (optional)"></textarea>
           <button type="submit">Add Project</button>
@@ -1114,6 +1081,7 @@ app.get('/admin/add-project', requireAdminSession, (req, res) => {
     </html>
   `);
 });
+
 
 // POST: Handle form submission
 app.post('/admin/add-project',
@@ -1146,6 +1114,8 @@ app.post('/admin/add-project',
 // Show the form to add new staff + create account
 app.get('/admin/add-staff-account', requireAdminSession, async (req, res, next) => {
   try {
+    const token = generateToken(res, req); // ✅ move this OUTSIDE the string
+
     const form = `
     <!DOCTYPE html>
     <html>
@@ -1162,10 +1132,8 @@ app.get('/admin/add-staff-account', requireAdminSession, async (req, res, next) 
     </head>
     <body>
       <h2 style="text-align:center;">Add New Staff + Login Account</h2>
-      const token = res.locals.csrfToken;
-...
-<form method="POST" action="/admin/add-staff-account">
-  <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
+      <form method="POST" action="/admin/add-staff-account">
+        <input type="hidden" name="_csrf" value="${escapeHtml(token)}" />
         <label>Name</label>
         <input type="text" name="name" required />
 
@@ -1182,9 +1150,10 @@ app.get('/admin/add-staff-account', requireAdminSession, async (req, res, next) 
     `;
     res.send(form);
   } catch (err) {
-  next(new DatabaseError('Error loading form.'));
-}
+    next(new DatabaseError('Error loading form.'));
+  }
 });
+
 
 // Handle form submission to add staff + create login
 app.post('/admin/add-staff-account',
@@ -1215,14 +1184,11 @@ app.post('/admin/add-staff-account',
       }
 
       await db.transaction(async trx => {
-  const sanitizedName = sanitizeText(name);
-  const sanitizedEmail = sanitizeEmail(email);
-
-  const insertedStaff = await trx('staff')
-    .insert({
-      name: sanitizedName,
-      email: sanitizedEmail,
-      active: true
+        const insertedStaff = await trx('staff')
+          .insert({
+            name: sanitizedName,
+            email: sanitizedEmail,
+            active: true
     })
     .returning('id');
 
