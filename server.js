@@ -29,9 +29,8 @@ const validator = require('validator');
 const { escapeHtml } = require('./utils/helpers');
 const { body, validationResult } = require('express-validator');
 const { buildThankYouEmail } = require('./utils/emailTemplates');
-const doubleCsrf = require('csrf-csrf');
+const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
-
 
 
 // ✅ PostgreSQL pool
@@ -164,7 +163,7 @@ const finalOptions = {
   }
 };
 
-const [doubleCsrfProtection, generateToken] = doubleCsrf(finalOptions);
+const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
 
 
 app.use(doubleCsrfProtection);
@@ -175,34 +174,6 @@ app.use((req, res, next) => {
   next();
 });
 
-
-// ✅ 6. Expose CSRF token to locals + set cookie – now guaranteed to work
-app.use((req, res, next) => {
-  try {
-    if (!req.session || !req.sessionID) {
-      logger.warn('⚠️ No session or sessionID – skipping CSRF token generation');
-      return next();
-    }
-
-    const token = req.csrfToken(); // Now guaranteed to exist
-    logger.debug('✅ CSRF Token:', token);
-
-    res.locals.csrfToken = token;
-
-    res.cookie(csrfCookieName, token, {
-      httpOnly: false, // allow JS access
-      secure: isProduction,
-      sameSite: 'lax',
-      path: '/',
-      domain: '.harvestcallafrica.org' // enable subdomain sharing
-    });
-
-    next();
-  } catch (err) {
-    logger.error('❌ Critical CSRF token error:', err.message);
-    next(new AppError('CSRF token generation failed', 500));
-  }
-});
 
 // ✅ Environment validation
 const requiredEnvVars = [
@@ -385,8 +356,7 @@ const requireStaffSession = (req, res, next) => {
 // ===== ROUTES START HERE ===== //
 // Generate CSRF token and set cookie
 app.get('/csrf-token', (req, res) => {
-  const token = req.csrfToken(); // Forces token generation
-  res.json({ csrfToken: token });
+  res.json({ csrfToken: res.locals.csrfToken });
 });
 
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
@@ -402,7 +372,7 @@ app.get('/csrf-test', (req, res) => {
 
 app.get('/debug/csrf', (req, res) => {
   const tokenFromSession = req.session.csrfSecret;
-  const tokenFromRequest = req.csrfToken();
+  const tokenFromRequest = res.locals.csrfToken;
   res.json({
     csrfSecretInSession: !!tokenFromSession,
     csrfTokenInRequest: !!tokenFromRequest,
