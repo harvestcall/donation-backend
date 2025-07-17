@@ -168,7 +168,7 @@ const finalOptions = {
 const doubleCsrfUtilities = doubleCsrf(finalOptions);
 console.log('✅ doubleCsrfUtilities:', Object.keys(doubleCsrfUtilities));
 const doubleCsrfProtection = doubleCsrfUtilities.doubleCsrfProtection;
-const generateToken = doubleCsrfUtilities.generateToken;
+const generateCsrfToken = doubleCsrfUtilities.generateCsrfToken;
 
 
 app.use(doubleCsrfProtection);
@@ -328,7 +328,7 @@ app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
 // GET /csrf-test - For debugging CSRF token flow
 app.get('/csrf-test', (req, res) => {
-  const token = generateToken(res, req);
+  const token = generateCsrfToken(res, req);
   res.json({
     csrfToken: token,
     message: 'CSRF token generated and cookie set'
@@ -1054,7 +1054,7 @@ app.post('/admin/toggle-project/:id', requireAdminSession, async (req, res, next
 
 // GET: Show form to add a new project
 app.get('/admin/add-project', requireAdminSession, (req, res) => {
-  const token = generateToken(res, req); // ✅ move this OUTSIDE the string
+  const token = generateCsrfToken(res, req); // ✅ move this OUTSIDE the string
 
   res.send(`
     <html>
@@ -1115,7 +1115,7 @@ app.post('/admin/add-project',
 // Show the form to add new staff + create account
 app.get('/admin/add-staff-account', requireAdminSession, async (req, res, next) => {
   try {
-    const token = generateToken(res, req); // ✅ move this OUTSIDE the string
+    const token = generateCsrfToken(res, req); // ✅ move this OUTSIDE the string
 
     const form = `
     <!DOCTYPE html>
@@ -1380,7 +1380,7 @@ app.get('/logout', requireStaffSession, (req, res) => {
 
 // Forgot Password - Show Request Form
 app.get('/forgot-password', requireStaffSession, (req, res) => {
-  const csrfToken = generateToken(res, req);
+  const csrfToken = generateCsrfToken(res, req);
   const cspNonce = res.locals.cspNonce;
 
   res.render('forgot-password', {
@@ -1442,7 +1442,7 @@ app.post('/forgot-password', requireStaffSession, [
 // GET: Password Reset Form - Displays form to reset password using token
 app.get('/reset-password', requireStaffSession, (req, res) => {
   const token = req.query.token;
-  const csrfToken = generateToken(res, req);
+  const csrfToken = generateCsrfToken(res, req);
 
   if (!token) {
     return res.status(400).send(`
@@ -1535,7 +1535,7 @@ app.post('/reset-password', requireStaffSession, [
 
 // ✅ Change Password - GET
 app.get('/change-password', requireStaffSession, (req, res) => {
-  const csrfToken = generateToken(res, req);
+  const csrfToken = generateCsrfToken(res, req);
   res.render('change-password', {
     csrfToken: token,
     cspNonce: res.locals.cspNonce
@@ -1613,7 +1613,7 @@ app.post('/change-password', requireStaffSession, [
 // ✅ Password Reset Form - Added for token-based password reset
 app.get('/reset-password', requireStaffSession, (req, res) => {
   const token = req.query.token;
-  const csrfToken = generateToken(res, req);
+  const csrfToken = generateCsrfToken(res, req);
 
   if (!token) {
     return res.status(400).send(`
