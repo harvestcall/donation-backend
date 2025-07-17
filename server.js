@@ -153,16 +153,27 @@ app.use(session({
   cookie: sessionCookieOptions
 }));
 
+app.use((req, res, next) => {
+  req.session.touch?.(); // Ensures session is initialized early
+  next();
+});
+
 // ✅ 5. Double-submit CSRF config – define options BEFORE using them
 const finalOptions = {
   ...options,
   getSecret: (req) => {
+    if (!req.session) {
+      throw new Error('Session middleware must run before CSRF setup');
+    }
+
     if (!req.session.csrfSecret) {
       req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
     }
+
     return req.session.csrfSecret;
   }
 };
+
 
 // ✅ Initialize CSRF protection
 const doubleCsrfUtilities = doubleCsrf(finalOptions);
