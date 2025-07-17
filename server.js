@@ -163,14 +163,17 @@ const finalOptions = {
   }
 };
 
-const { doubleCsrfProtection, generateToken } = doubleCsrf(finalOptions);
+// ✅ Initialize CSRF protection
+const doubleCsrfUtilities = doubleCsrf(finalOptions);
+const doubleCsrfProtection = doubleCsrfUtilities.doubleCsrfProtection;
+const generateToken = doubleCsrfUtilities.generateToken;
 
 
 app.use(doubleCsrfProtection);
 
 // ✅ Make CSRF token available to views
 app.use((req, res, next) => {
-  res.locals.csrfToken = generateToken(req, res);
+  res.locals.csrfToken = generateToken(res, req);
   next();
 });
 
