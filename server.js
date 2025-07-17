@@ -29,7 +29,7 @@ const validator = require('validator');
 const { escapeHtml } = require('./utils/helpers');
 const { body, validationResult } = require('express-validator');
 const { buildThankYouEmail } = require('./utils/emailTemplates');
-const { generateToken, doubleCsrf } = require('csrf-csrf');
+const { doubleCsrf } = require('csrf-csrf');
 const { csrfCookieName, options } = require('./config/csrf-config');
 
 
@@ -164,7 +164,8 @@ const finalOptions = {
   }
 };
 
-const { doubleCsrfProtection } = doubleCsrf(finalOptions);
+const { generateToken, doubleCsrfProtection } = doubleCsrf(finalOptions); // ✅ correct
+
 
 
 app.use(doubleCsrfProtection);
