@@ -153,16 +153,14 @@ app.use(session({
   cookie: sessionCookieOptions
 }));
 
-// ✅ Logging to session middleware
+// ✅ Ensure session is initialized early and Logging to session middleware
 app.use((req, res, next) => {
-  logger.debug(`Session initialized: ${!!req.session}`);
-  req.session.touch?.();
-  next();
-});
-
-// Ensures session is initialized early
-app.use((req, res, next) => {
-  req.session.touch?.(); // Ensures session is initialized early
+  if (req.session) {
+    req.session.touch();
+    logger.debug('Session touched to extend expiration');
+  } else {
+    logger.warn('Session not available during touch attempt');
+  }
   next();
 });
 
@@ -183,6 +181,18 @@ const finalOptions = {
     return req.session.csrfSecret;
   }
 };
+
+// ✅ 6. CSRF Token Generation Middleware
+app.use((req, res, next) => {
+  try {
+    res.locals.csrfToken = generateCsrfToken(res, req);
+  } catch (err) {
+    logger.error('CSRF token generation failed:', err.message);
+    // Fallback to empty token if generation fails
+    res.locals.csrfToken = '';
+  }
+  next();
+});
 
 
 // ✅ Initialize CSRF protection
@@ -349,7 +359,7 @@ app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
 // GET /csrf-test - For debugging CSRF token flow
 app.get('/csrf-test', (req, res) => {
-  const token = generateCsrfToken(res, req);
+  const token = res.locals.csrfToken;
   res.json({
     csrfToken: token,
     message: 'CSRF token generated and cookie set'
@@ -394,7 +404,7 @@ app.get('/', (req, res, next) => {
   logger.debug('[ROUTE /] Rendering donation-form EJS');
   res.render('donation-form', {
   cspNonce: res.locals.cspNonce,
-  csrfToken: generateCsrfToken(res, req), // ← now generated at render time
+  csrfToken: res.locals.csrfToken,
   FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL,
   API_URL: process.env.API_URL || process.env.FRONTEND_BASE_URL
 });
@@ -658,7 +668,7 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
 // Admin Login Form - GET
 app.get('/admin/login', (req, res) => {
   res.render('admin-login', {
-    csrfToken: generateCsrfToken(res, req), // ✅ Generate only when needed
+    csrfToken: res.locals.csrfToken,
     cspNonce: res.locals.cspNonce,
     error: null
   });
@@ -1075,7 +1085,7 @@ app.post('/admin/toggle-project/:id', requireAdminSession, async (req, res, next
 
 // GET: Show form to add a new project
 app.get('/admin/add-project', requireAdminSession, (req, res) => {
-  const token = generateCsrfToken(res, req); // ✅ move this OUTSIDE the string
+  const token = res.locals.csrfToken;
 
   res.send(`
     <html>
@@ -1136,7 +1146,7 @@ app.post('/admin/add-project',
 // Show the form to add new staff + create account
 app.get('/admin/add-staff-account', requireAdminSession, async (req, res, next) => {
   try {
-    const token = generateCsrfToken(res, req); // ✅ move this OUTSIDE the string
+    const token = res.locals.csrfToken;
 
     const form = `
     <!DOCTYPE html>
@@ -1295,7 +1305,7 @@ const assignments = selectedProjects.map(pid => ({
 app.get('/login', (req, res) => {
   res.render('staff-login', {
     cspNonce: res.locals.cspNonce,
-    csrfToken: generateCsrfToken(res, req), // ✅ Fresh token
+    csrfToken: res.locals.csrfToken, // ✅ Fresh token
     error: req.query.error || null
   });
 });
@@ -1401,7 +1411,7 @@ app.get('/logout', requireStaffSession, (req, res) => {
 
 // Forgot Password - Show Request Form
 app.get('/forgot-password', requireStaffSession, (req, res) => {
-  const csrfToken = generateCsrfToken(res, req);
+  const csrfToken = res.locals.csrfToken;
   const cspNonce = res.locals.cspNonce;
 
   res.render('forgot-password', {
@@ -1463,7 +1473,7 @@ app.post('/forgot-password', requireStaffSession, [
 // GET: Password Reset Form - Displays form to reset password using token
 app.get('/reset-password', requireStaffSession, (req, res) => {
   const token = req.query.token;
-  const csrfToken = generateCsrfToken(res, req);
+  const csrfToken = res.locals.csrfToken;
 
   if (!token) {
     return res.status(400).send(`
@@ -1556,7 +1566,7 @@ app.post('/reset-password', requireStaffSession, [
 
 // ✅ Change Password - GET
 app.get('/change-password', requireStaffSession, (req, res) => {
-  const csrfToken = generateCsrfToken(res, req);
+  const csrfToken = res.locals.csrfToken;
   res.render('change-password', {
     csrfToken: token,
     cspNonce: res.locals.cspNonce
@@ -1634,7 +1644,7 @@ app.post('/change-password', requireStaffSession, [
 // ✅ Password Reset Form - Added for token-based password reset
 app.get('/reset-password', requireStaffSession, (req, res) => {
   const token = req.query.token;
-  const csrfToken = generateCsrfToken(res, req);
+  const csrfToken = res.locals.csrfToken;
 
   if (!token) {
     return res.status(400).send(`
