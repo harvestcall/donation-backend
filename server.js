@@ -85,10 +85,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ 1. Core middleware – must come first so req.body and cookies are available
+// ✅ 1.1 Core middleware
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use(cookieParser());
 
-// ✅ 1.2. Session middleware – MUST COME AFTER bodyParser/cookieParser
+// ✅ 1.2 Session middleware
 const sessionCookieOptions = {
   path: '/',
   httpOnly: true,
@@ -127,13 +134,7 @@ app.use((req, res, next) => {
 });
 
 
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-app.use(cookieParser());
+
 
 // ✅ 2. CORS middleware – needed before anything that uses credentials or preflight
 const FRONTEND_URL = process.env.FRONTEND_BASE_URL;
