@@ -638,6 +638,18 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
       created_at: new Date().toISOString()
     });
 
+    // ✅ After inserting, log last 5 donations
+    const recentDonations = await db('donations')
+     .select('*')
+     .orderBy('created_at', 'desc')
+     .limit(5);
+
+    console.log('🧾 Recent Donations:', recentDonations);
+
+    const cols = await db('donations').columnInfo();
+    console.log('🧱 Donations Table Columns:', cols);
+
+
     // ✅ Log success
     const donorName = safeMetadata.donorName || 'Anonymous Supporter';
     logger.info(`✅ Verified Payment: ${paymentData.reference} | Donor: ${donorName}`);
