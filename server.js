@@ -182,6 +182,12 @@ const finalOptions = {
   }
 };
 
+// ✅ Initialize CSRF protection
+const doubleCsrfUtilities = doubleCsrf(finalOptions);
+console.log('✅ doubleCsrfUtilities:', Object.keys(doubleCsrfUtilities));
+const doubleCsrfProtection = doubleCsrfUtilities.doubleCsrfProtection;
+const generateCsrfToken = doubleCsrfUtilities.generateCsrfToken;
+
 // ✅ 6. CSRF Token Generation Middleware
 app.use((req, res, next) => {
   try {
@@ -195,13 +201,7 @@ app.use((req, res, next) => {
 });
 
 
-// ✅ Initialize CSRF protection
-const doubleCsrfUtilities = doubleCsrf(finalOptions);
-console.log('✅ doubleCsrfUtilities:', Object.keys(doubleCsrfUtilities));
-const doubleCsrfProtection = doubleCsrfUtilities.doubleCsrfProtection;
-const generateCsrfToken = doubleCsrfUtilities.generateCsrfToken;
-
-
+// ✅ Apply CSRF protection
 app.use(doubleCsrfProtection);
 
 
