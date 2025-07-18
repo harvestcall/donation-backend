@@ -738,14 +738,14 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
 });
 
 app.get('/thank-you', (req, res) => {
-  const { name, amount, currency, type, purpose } = req.query;
+  const { name, amount, currency, type: donationType, purpose } = req.query;
 
 
   const sanitized = {
     name: sanitizeHtml(name),
     amount: sanitizeHtml(amount),
     currency: sanitizeHtml(currency),
-    type: sanitizeHtml(type),
+    donationType: sanitizeHtml(donationType),
     purpose: sanitizeHtml(purpose)
   };
 
