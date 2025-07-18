@@ -714,9 +714,6 @@ app.get('/admin/login', (req, res) => {
   });
 });
 
-
-
-
 // Admin Login Form - POST
 app.post(
   '/admin/login',
@@ -1434,6 +1431,28 @@ app.post(
     }
   }
 );
+
+app.get('/login-debug', (req, res) => {
+  res.render('staff-login', {
+    cspNonce: res.locals.cspNonce,
+    csrfToken: res.locals.csrfToken,
+    sessionID: req.sessionID,
+    csrfCookie: req.cookies[csrfCookieName] || null,
+    error: null
+  });
+});
+
+
+app.post('/debug/csrf-check', (req, res) => {
+  res.json({
+    message: "Received CSRF debug request.",
+    formToken: req.body._csrf,
+    cookieToken: req.cookies[csrfCookieName],
+    sessionSecret: req.session?.csrfSecret,
+    sessionID: req.sessionID,
+    rawCookies: req.headers.cookie,
+  });
+});
 
 // ✅ Staff Logout
 app.get('/logout', requireStaffSession, (req, res) => {

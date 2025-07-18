@@ -96,29 +96,44 @@
     .forgot-link {
       margin-top: 1rem;
       text-align: center;
+      font-size: 0.95rem;
     }
 
     .forgot-link a {
       color: var(--dark-blue);
       text-decoration: none;
-      font-size: 0.95rem;
     }
 
     .forgot-link a:hover {
       text-decoration: underline;
     }
+
+    .debug-info {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: #333;
+      background: #f3f3f3;
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .debug-info code {
+      font-family: monospace;
+      color: #003366;
+      word-break: break-all;
+    }
   </style>
 </head>
 <body>
   <div class="login-container">
-    <h2>Staff Login</h2>
+    <h2>Staff Login (Debug Mode)</h2>
 
     <% if (typeof error !== 'undefined' && error) { %>
       <div class="error-message"><%= error %></div>
     <% } %>
 
-    <form action="/login" method="POST" novalidate>
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <form action="/debug/csrf-check" method="POST" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 
       <div class="input-group">
         <label for="email">Email</label>
@@ -130,11 +145,20 @@
         <input type="password" name="password" id="password" autocomplete="current-password" required />
       </div>
 
-      <button type="submit">Login</button>
+      <button type="submit">Submit (CSRF Debug)</button>
     </form>
 
     <div class="forgot-link">
       <a href="/forgot-password">Forgot your password?</a>
+    </div>
+
+    <div class="debug-info">
+      <p><strong>CSRF Debug Info:</strong></p>
+      <p><code>Token in form: <%= csrfToken %></code></p>
+      <p><code>Session ID: <%= typeof sessionID !== 'undefined' ? sessionID : 'N/A' %></code></p>
+      <% if (typeof csrfCookie !== 'undefined') { %>
+        <p><code>CSRF Cookie: <%= csrfCookie %></code></p>
+      <% } %>
     </div>
   </div>
 </body>
