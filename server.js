@@ -209,6 +209,17 @@ console.log('✅ doubleCsrfUtilities:', Object.keys(doubleCsrfUtilities));
 const doubleCsrfProtection = doubleCsrfUtilities.doubleCsrfProtection;
 const generateCsrfToken = doubleCsrfUtilities.generateCsrfToken;
 
+// ✅ Conditional CSRF Middleware – skip /login POST
+function conditionalCsrfProtection(req, res, next) {
+  const skipPaths = ['/login', '/admin/login'];
+  if (skipPaths.includes(req.path) && req.method === 'POST') {
+    logger.warn('⚠️ Skipping CSRF protection for:', req.path);
+    return next();
+  }
+  return doubleCsrfProtection(req, res, next);
+}
+app.use(conditionalCsrfProtection);
+
 // ✅ Ensure session is initialized and saved
 app.use((req, res, next) => {
   if (!req.session) {
@@ -267,10 +278,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
-
-// ✅ Apply CSRF protection
-app.use(doubleCsrfProtection);
 
 
 // ✅ Environment validation
@@ -1371,12 +1378,11 @@ app.get('/login', (req, res) => {
   res.render('staff-login', {
     cspNonce: res.locals.cspNonce,
     csrfToken: res.locals.csrfToken, // ✅ Fresh token
+    csrfCookie: req.cookies['__Host-hc-csrf-token'], // ✅ Optional debug info
+    sessionID: req.sessionID, // ✅ Optional debug info
     error: req.query.error || null
   });
 });
-
-
-
 
 app.post(
   '/login',
