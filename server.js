@@ -212,17 +212,22 @@ const generateCsrfToken = doubleCsrfUtilities.generateCsrfToken;
 // ✅ Conditional CSRF Middleware – skip /login POST
 function conditionalCsrfProtection(req, res, next) {
   const skipPaths = [
-  '/login',
-  '/admin/login',
-  '/api/paystack-webhook',
-  '/initialize-payment'  // 👈 add this line
-];
-  if (skipPaths.includes(req.path) && req.method === 'POST') {
-    logger.warn('⚠️ Skipping CSRF protection for:', req.path);
+    '/login',
+    '/admin/login',
+    '/api/paystack-webhook',
+    '/webhook' // 👈 Yes, include this too if you use it
+  ];
+
+  const fullPath = req.originalUrl || req.url;
+
+  if (skipPaths.some(path => fullPath.startsWith(path)) && req.method === 'POST') {
+    logger.warn('⚠️ Skipping CSRF protection for:', fullPath);
     return next();
   }
+
   return doubleCsrfProtection(req, res, next);
 }
+
 app.use(conditionalCsrfProtection);
 
 // ✅ Ensure session is initialized and saved
