@@ -702,51 +702,65 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
     const paymentReference = paymentData.reference;
 
     // 📨 Send beautiful, styled thank-you email
-    if (process.env.SENDGRID_API_KEY) {
-      try {
-        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+if (process.env.SENDGRID_API_KEY) {
+  try {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-        let formattedDonationType = 'One-Time Gift';
-        if (safeMetadata.donationType === 'recurring') {
-         formattedDonationType = 'Monthly Support';
-        }
-
-      const htmlContent = buildThankYouEmail({
-        donorFirstName,
-        formattedAmount,
-        paymentReference,
-        purposeText,
-        donationDate,
-        donationType: formattedDonationType
-  });
-
-
-        logger.debug('📄 Generated thank-you email HTML:', htmlContent);
-
-        await sgMail.send({
-          to: sanitizedEmail,
-          from: { name: 'Harvest Call Ministries', email: 'giving@harvestcallafrica.org' },
-          subject: `Thank You, ${donorFirstName}! Your Generosity is Making a Difference`,
-          html: htmlContent
-        });
-
-        logger.info(`📧 Thank-you email successfully sent to ${sanitizedEmail}`, {
-          to: sanitizedEmail,
-          subject: `Thank You, ${donorFirstName}`,
-          reference: paymentReference
-        });
-
-      } catch (emailErr) {
-        logger.error('❌ Failed to send thank-you email:', emailErr.message);
-        logger.debug('SendGrid error details:', emailErr.response?.body || 'No response body');
-      }
-    } else {
-      logger.warn('⚠️ SENDGRID_API_KEY not set – skipping thank-you email', {
-        donor: donorName,
-        amount: formattedAmount,
-        reference: paymentReference
-      });
+    // ✅ Format donation type
+    let formattedDonationType = 'One-Time Gift';
+    if (safeMetadata.donationType === 'recurring') {
+      formattedDonationType = 'Monthly Support';
     }
+
+    // ✅ Preview data going into the email
+    console.log('🧪 Email data preview:', {
+      donorFirstName,
+      formattedAmount,
+      paymentReference,
+      purposeText,
+      donationDate,
+      donationType: formattedDonationType
+    });
+
+    // ✅ Build HTML email
+    const htmlContent = buildThankYouEmail({
+      donorFirstName,
+      formattedAmount,
+      paymentReference,
+      purposeText,
+      donationDate,
+      donationType: formattedDonationType
+    });
+
+    logger.debug('📄 Generated thank-you email HTML:', htmlContent);
+
+    // ✅ Send the email
+    await sgMail.send({
+      to: sanitizedEmail,
+      from: { name: 'Harvest Call Ministries', email: 'giving@harvestcallafrica.org' },
+      subject: `Thank You, ${donorFirstName}! Your Generosity is Making a Difference`,
+      html: htmlContent
+    });
+
+    logger.info(`📧 Thank-you email successfully sent to ${sanitizedEmail}`, {
+      to: sanitizedEmail,
+      subject: `Thank You, ${donorFirstName}`,
+      reference: paymentReference
+    });
+
+  } catch (emailErr) {
+    // 🛑 Catch any error in building or sending the email
+    logger.error('❌ Failed to build or send thank-you email:', emailErr.message);
+    logger.debug('SendGrid error details:', emailErr.response?.body || 'No response body');
+  }
+} else {
+  logger.warn('⚠️ SENDGRID_API_KEY not set – skipping thank-you email', {
+    donor: donorName,
+    amount: formattedAmount,
+    reference: paymentReference
+  });
+}
+
 
     res.status(200).json({ status: 'success' });
 
