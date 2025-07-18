@@ -495,36 +495,6 @@ app.get('/', (req, res, next) => {
 });
 });
 
-app.get('/thank-you', (req, res) => {
-  const { name, amount, currency, type, purpose } = req.query;
-
-
-  const sanitized = {
-    name: sanitizeHtml(name),
-    amount: sanitizeHtml(amount),
-    currency: sanitizeHtml(currency),
-    type: sanitizeHtml(type),
-    purpose: sanitizeHtml(purpose)
-  };
-
-
-  res.render('thank-you', {
-    cspNonce: res.locals.cspNonce,
-    ...sanitized
-  });
-});
-
-
-
-  app.get('/debug/donations', requireAdminSession, async (req, res, next) => {
-    try {
-      const all = await db('donations').select('*');
-      res.json(all);
-    } catch (err) {
-      next(new DatabaseError('Failed to fetch debug donation data'));
-    }
-  });
-
 
 // ✅ Payment Initialization Route
 app.post('/initialize-payment', [
@@ -543,14 +513,30 @@ app.post('/initialize-payment', [
   .withMessage('Name must contain only letters and spaces')
 ], validateRequest, csrfLimiter, async (req, res) => {
   try {
-    const { email, amount, currency = 'NGN', donationType = 'one-time', purpose = 'general' } = req.body;
-    const donorName = req.body.name || 'Friend';
+    const {
+  email,
+  amount,
+  currency = 'NGN',
+  donationType = 'one-time',
+  purpose = 'general',
+  name,
+  staffId,
+  projectId
+} = req.body;
+
+const donorName = name || 'Friend';
+
 
     // ✅ Prepare metadata
-    const metadata = {};
-    if (donorName) metadata.donorName = validator.escape(donorName.trim());
-    metadata.donationType = donationType;
-    metadata.purpose = purpose;
+    const metadata = {
+    donorName: validator.escape(donorName.trim()),
+    donationType,
+    purpose
+  };
+
+    if (staffId) metadata.staffId = staffId;
+    if (projectId) metadata.projectId = projectId;
+
 
     const amountInKobo = Math.round(amount * 100); // Convert to kobo
 
@@ -560,7 +546,7 @@ app.post('/initialize-payment', [
       amount: amountInKobo,
       currency,
       metadata,
-      callback_url: `${process.env.FRONTEND_BASE_URL}/thank-you`
+      callback_url: `${process.env.FRONTEND_BASE_URL}/thank-you?name=${encodeURIComponent(donorName)}&amount=${amount}&currency=${currency}&type=${donationType}&purpose=${purpose}`
     }, {
       headers: {
         Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
@@ -749,6 +735,35 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
   }
 });
 
+app.get('/thank-you', (req, res) => {
+  const { name, amount, currency, type, purpose } = req.query;
+
+
+  const sanitized = {
+    name: sanitizeHtml(name),
+    amount: sanitizeHtml(amount),
+    currency: sanitizeHtml(currency),
+    type: sanitizeHtml(type),
+    purpose: sanitizeHtml(purpose)
+  };
+
+
+  res.render('thank-you', {
+    cspNonce: res.locals.cspNonce,
+    ...sanitized
+  });
+});
+
+
+
+  app.get('/debug/donations', requireAdminSession, async (req, res, next) => {
+    try {
+      const all = await db('donations').select('*');
+      res.json(all);
+    } catch (err) {
+      next(new DatabaseError('Failed to fetch debug donation data'));
+    }
+  });
 
 // Admin Login Form - GET
 app.get('/admin/login', (req, res) => {
