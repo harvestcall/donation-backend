@@ -540,6 +540,8 @@ const donorName = name || 'Friend';
 
     const amountInKobo = Math.round(amount * 100); // Convert to kobo
 
+    logger.debug('📦 Metadata sent to Paystack:', metadata);
+
     // ✅ Call Paystack API
     const response = await axios.post('https://api.paystack.co/transaction/initialize ', {
       email,
