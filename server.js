@@ -125,13 +125,8 @@ app.use(session({
 // ✅ Clear any legacy/default session cookies (connect.sid)
 app.use((req, res, next) => {
   if (req.cookies['connect.sid']) {
-    res.clearCookie('connect.sid', {
-      path: '/',
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'lax' : 'strict'
-    });
-    logger.warn('Cleared lingering connect.sid cookie');
+    res.clearCookie('connect.sid', { path: '/' });
+    logger.warn('Removed legacy connect.sid cookie');
   }
   next();
 });
@@ -147,8 +142,11 @@ app.use((req, res, next) => {
   next();
 });
 
-
-
+// ✅ Handle Paystack webhook — before CSRF protection
+app.use('/api/paystack-webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
+  logger.info('Paystack webhook received');
+  return handlePaystackWebhook(req, res, next);
+});
 
 // ✅ 2. CORS middleware – needed before anything that uses credentials or preflight
 const FRONTEND_URL = process.env.FRONTEND_BASE_URL;
@@ -247,6 +245,7 @@ app.use((req, res, next) => {
       res.locals.csrfToken = '';
     } else {
       res.locals.csrfToken = generateCsrfToken(req, res);
+      logger.debug('Set csrfToken in res.locals:', res.locals.csrfToken); // ✅ Added
     }
   } catch (err) {
     logger.error('CSRF token generation failed:', err.message);
@@ -254,6 +253,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+
 
 // Explicitly set the CSRF cookie
 app.use((req, res, next) => {
@@ -1378,115 +1378,110 @@ app.get('/login', (req, res) => {
 
 
 
-// ✅ Login Handler - POST
 app.post(
   '/login',
   (req, res, next) => {
-    // Add to POST login handlers before validation
-    logger.debug(`[LOGIN] CSRF Token from form: ${req.body._csrf}`);
-    logger.debug(`[LOGIN] CSRF Token from session: ${res.locals.csrfToken}`);
-    logger.debug(`[LOGIN] CSRF Secret: ${req.session.csrfSecret}`);
-    next();
+    const formToken = req.body._csrf;
+    const cookieToken = req.cookies['__Host-hc-csrf-token'];
+    const secret = req.session?.csrfSecret;
+
+    logger.debug(`[LOGIN] Form CSRF token: ${formToken}`);
+    logger.debug(`[LOGIN] Cookie CSRF token: ${cookieToken}`);
+    logger.debug(`[LOGIN] Session CSRF secret: ${secret}`);
+
+    next(); // continue to rate limiter
   },
- 
+
   loginLimiter,
+
   [
     body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
     body('password').isString().notEmpty().withMessage('Password is required')
   ],
   validateRequest,
+
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
       const normalizedEmail = email.toLowerCase();
 
-
-      // Fetch account from DB
       const account = await db('staff_accounts')
         .where(db.raw('LOWER(email)'), normalizedEmail)
         .first();
 
+      if (!account || account.disabled) {
+        const reason = !account ? 'Invalid credentials' : 'Account disabled';
+        logger.warn(`[LOGIN] ${reason} for ${normalizedEmail}`);
 
-      if (!account) {
-        return res.status(401).render('login', {
-          csrfToken: res.locals.csrfToken,
+        return res.status(401).render('staff-login', {
+          csrfToken: generateCsrfToken(req, res),
           cspNonce: res.locals.cspNonce,
           error: 'Invalid email or password'
         });
       }
-
-
-      if (account.disabled) {
-        return res.status(403).render('login', {
-          csrfToken: res.locals.csrfToken,
-          cspNonce: res.locals.cspNonce,
-          error: 'This account has been disabled'
-        });
-      }
-
 
       const isMatch = await bcrypt.compare(password, account.password_hash);
-
-
       if (!isMatch) {
-        return res.status(401).render('login', {
-          csrfToken: res.locals.csrfToken,
+        logger.warn(`[LOGIN] Password mismatch for ${normalizedEmail}`);
+        return res.status(401).render('staff-login', {
+          csrfToken: generateCsrfToken(req, res),
           cspNonce: res.locals.cspNonce,
           error: 'Invalid email or password'
         });
       }
 
-
-      // ✅ Success: Regenerate session and redirect
+      // ✅ Login success
       req.session.regenerate(async err => {
         if (err) {
-          logger.error('❌ Session regeneration failed:', err.message);
-          return next(new AppError('Session regeneration failed', 500));
+          logger.error('Session regeneration failed:', err.message);
+          return next(new AppError('Session error', 500));
         }
-
 
         req.session.staffId = account.staff_id;
         req.session.accountId = account.id;
 
-
+        logger.info(`[LOGIN] Success for staff ID ${account.staff_id}`);
         res.redirect(303, '/staff-dashboard');
       });
 
-
     } catch (err) {
-      logger.error('Login error:', err.message);
-      next(new AppError('Authentication failed.', 500));
+      logger.error('Unexpected login error:', err.message);
+      next(new AppError('Login error', 500));
     }
   }
 );
 
-app.get('/login-debug', (req, res) => {
-  res.render('staff-login', {
-    cspNonce: res.locals.cspNonce,
-    csrfToken: res.locals.csrfToken,
-    sessionID: req.sessionID,
-    csrfCookie: req.cookies[csrfCookieName] || null,
-    error: null
-  });
-});
 
+app.get('/login-debug', (req, res) => {
+  try {
+    const csrfToken = generateCsrfToken(req, res); // explicitly force token + cookie
+    res.render('login-debug', {
+      csrfToken,
+      sessionID: req.sessionID,
+      csrfCookie: req.cookies['__Host-hc-csrf-token'] || '(missing)'
+    });
+  } catch (err) {
+    logger.error('Login debug render failed:', err.message);
+    res.status(500).send('CSRF debug failure');
+  }
+});
 
 app.post('/debug/csrf-check', (req, res) => {
-  const tokenFromForm = req.body._csrf;
-  const tokenFromCookie = req.cookies[csrfCookieName];
+  const formToken = req.body._csrf;
+  const cookieToken = req.cookies['__Host-hc-csrf-token'];
   const sessionSecret = req.session?.csrfSecret;
-
-  const tokenMatches = tokenFromForm === tokenFromCookie;
+  const match = formToken === cookieToken;
 
   res.json({
-    message: "Received CSRF debug request.",
-    formToken: tokenFromForm,
-    cookieToken: tokenFromCookie,
-    sessionSecret: sessionSecret,
+    message: 'CSRF Debug Info',
+    formToken,
+    cookieToken,
+    sessionSecret,
     sessionID: req.sessionID,
-    tokenMatches
+    tokenMatches: match
   });
 });
+
 
 
 // ✅ Staff Logout

@@ -126,13 +126,14 @@
 </head>
 <body>
   <div class="login-container">
-    <h2>Staff Login (Debug Mode)</h2>
+    <h2>Staff Login</h2>
 
     <% if (typeof error !== 'undefined' && error) { %>
       <div class="error-message"><%= error %></div>
     <% } %>
 
-    <form action="/debug/csrf-check" method="POST" novalidate>
+    <!-- ✅ Actual Login Form -->
+    <form action="/login" method="POST" novalidate>
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 
       <div class="input-group">
@@ -145,13 +146,14 @@
         <input type="password" name="password" id="password" autocomplete="current-password" required />
       </div>
 
-      <button type="submit">Submit (CSRF Debug)</button>
+      <button type="submit">Login</button>
     </form>
 
     <div class="forgot-link">
       <a href="/forgot-password">Forgot your password?</a>
     </div>
 
+    <!-- ✅ Debug info for diagnostics -->
     <div class="debug-info">
       <p><strong>CSRF Debug Info:</strong></p>
       <p><code>Token in form: <%= csrfToken %></code></p>
