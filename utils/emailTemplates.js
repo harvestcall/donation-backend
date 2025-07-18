@@ -5,7 +5,8 @@ function buildThankYouEmail({
   formattedAmount,
   paymentReference,
   purposeText,
-  donationDate
+  donationDate,
+  donationType // ✅ ADD THIS if it's not already here
 }) {
   return `
     <!DOCTYPE html>
