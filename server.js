@@ -255,6 +255,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Explicitly set the CSRF cookie
+app.use((req, res, next) => {
+  if (res.locals.csrfToken) {
+    res.cookie(csrfCookieName, res.locals.csrfToken, {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: 'lax',
+      path: '/'
+    });
+  }
+  next();
+});
+
 
 // ✅ Apply CSRF protection
 app.use(doubleCsrfProtection);
