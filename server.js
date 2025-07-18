@@ -87,6 +87,46 @@ app.use((req, res, next) => {
 
 // ✅ 1. Core middleware – must come first so req.body and cookies are available
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ✅ 1.2. Session middleware – MUST COME AFTER bodyParser/cookieParser
+const sessionCookieOptions = {
+  path: '/',
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? 'lax' : 'strict',
+  maxAge: 30 * 60 * 1000 // 30 minutes
+};
+
+if (!isProduction) {
+  sessionCookieOptions.secure = false; // Allow HTTP in development
+}
+
+app.use(session({
+  name: '__Host-hc-session',
+  store: new pgSession({
+    pool: pgPool,
+    tableName: 'session',
+    createTableIfMissing: true,
+    pruneSessionInterval: 60 
+  }),
+  secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
+  resave: false,
+  saveUninitialized: false,
+  cookie: sessionCookieOptions
+}));
+
+// ✅ Ensure session is initialized early and Logging to session middleware
+app.use((req, res, next) => {
+  if (req.session) {
+    req.session.touch();
+    logger.debug('Session touched to extend expiration');
+  } else {
+    logger.warn('Session not available during touch attempt');
+  }
+  next();
+});
+
+
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json({
   verify: (req, res, buf) => {
@@ -126,61 +166,29 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ 4. Session middleware – MUST COME AFTER bodyParser/cookieParser
-const sessionCookieOptions = {
-  path: '/',
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? 'lax' : 'strict',
-  maxAge: 30 * 60 * 1000 // 30 minutes
-};
 
-if (!isProduction) {
-  sessionCookieOptions.secure = false; // Allow HTTP in development
-}
 
-app.use(session({
-  name: '__Host-hc-session',
-  store: new pgSession({
-    pool: pgPool,
-    tableName: 'session',
-    createTableIfMissing: true,
-    pruneSessionInterval: 60 
-  }),
-  secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev',
-  resave: false,
-  saveUninitialized: false,
-  cookie: sessionCookieOptions
-}));
-
-// ✅ Ensure session is initialized early and Logging to session middleware
-app.use((req, res, next) => {
-  if (req.session) {
-    req.session.touch();
-    logger.debug('Session touched to extend expiration');
-  } else {
-    logger.warn('Session not available during touch attempt');
-  }
-  next();
-});
-
-// ✅ 5. Double-submit CSRF config – define options BEFORE using them
+// ✅ 4. Double-submit CSRF config – define options BEFORE using them
 const finalOptions = {
   ...options,
   getSecret: (req) => {
-    // Gracefully handle missing session instead of throwing error
     if (!req.session) {
-      logger.warn('Session not initialized during CSRF secret check');
-      return crypto.randomBytes(64).toString('hex'); // Temporary fallback
+      logger.error('Session missing in CSRF middleware', {
+        headers: req.headers,
+        cookies: req.cookies
+      });
+      return crypto.randomBytes(64).toString('hex');
     }
 
     if (!req.session.csrfSecret) {
+      logger.warn('Generating new CSRF secret');
       req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
     }
 
     return req.session.csrfSecret;
   }
 };
+
 
 // ✅ Initialize CSRF protection
 const doubleCsrfUtilities = doubleCsrf(finalOptions);
@@ -197,6 +205,12 @@ app.use((req, res, next) => {
 
   // Initialize csrfSecret if not present
   if (!req.session.csrfSecret) {
+    req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+  }
+
+  // Add validation
+  if (typeof req.session.csrfSecret !== 'string' || req.session.csrfSecret.length < 16) {
+    logger.error('Invalid CSRF secret format');
     req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
   }
 
@@ -217,7 +231,7 @@ app.use((req, res, next) => {
       logger.warn('CSRF token requested but session or secret is missing');
       res.locals.csrfToken = '';
     } else {
-      res.locals.csrfToken = generateCsrfToken(res, req);
+      res.locals.csrfToken = generateCsrfToken(req, res);
     }
   } catch (err) {
     logger.error('CSRF token generation failed:', err.message);
@@ -2037,6 +2051,31 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+// ✅ CSRF error handler
+app.use((err, req, res, next) => {
+  if (err.code === 'EBADCSRFTOKEN') {
+    logger.error('CSRF protection error', {
+      error: err.message,
+      session: req.session,
+      headers: req.headers,
+      body: req.body
+    });
+    res.status(403).send('Invalid CSRF token');
+  } else {
+    next(err); // Pass to the next error handler
+  }
+});
+
+// ✅ General (catch-all) error handler
+app.use((err, req, res, next) => {
+  logger.error('Unhandled server error', {
+    error: err.message,
+    stack: err.stack,
+    url: req.originalUrl
+  });
+  res.status(500).send('Something went wrong.');
+});
 
 // ✅ Handle graceful shutdown
 process.on('SIGINT', async () => {
