@@ -1444,15 +1444,22 @@ app.get('/login-debug', (req, res) => {
 
 
 app.post('/debug/csrf-check', (req, res) => {
+  const tokenFromForm = req.body._csrf;
+  const tokenFromCookie = req.cookies[csrfCookieName];
+  const sessionSecret = req.session?.csrfSecret;
+
+  const tokenMatches = tokenFromForm === tokenFromCookie;
+
   res.json({
     message: "Received CSRF debug request.",
-    formToken: req.body._csrf,
-    cookieToken: req.cookies[csrfCookieName],
-    sessionSecret: req.session?.csrfSecret,
+    formToken: tokenFromForm,
+    cookieToken: tokenFromCookie,
+    sessionSecret: sessionSecret,
     sessionID: req.sessionID,
-    rawCookies: req.headers.cookie,
+    tokenMatches
   });
 });
+
 
 // ✅ Staff Logout
 app.get('/logout', requireStaffSession, (req, res) => {
@@ -2080,11 +2087,19 @@ app.use((err, req, res, next) => {
       headers: req.headers,
       body: req.body
     });
+
+    // 🔍 Additional debug logs
+    logger.warn('Cookies:', req.cookies);
+    logger.warn('Session ID:', req.sessionID);
+    logger.warn('CSRF Cookie:', req.cookies[csrfCookieName]);
+    logger.warn('Session Secret:', req.session?.csrfSecret);
+
     res.status(403).send('Invalid CSRF token');
   } else {
-    next(err); // Pass to the next error handler
+    next(err);
   }
 });
+
 
 // ✅ General (catch-all) error handler
 app.use((err, req, res, next) => {
