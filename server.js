@@ -646,7 +646,7 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
       reference: paymentData.reference,
       amount: paymentData.amount,
       currency: paymentData.currency,
-      meta: JSON.stringify(safeMetadata),
+      metadata: JSON.stringify(safeMetadata),
       created_at: new Date().toISOString()
     });
 
