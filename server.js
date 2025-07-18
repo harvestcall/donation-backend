@@ -749,10 +749,12 @@ if (process.env.SENDGRID_API_KEY) {
     });
 
   } catch (emailErr) {
-    // 🛑 Catch any error in building or sending the email
-    logger.error('❌ Failed to build or send thank-you email:', emailErr.message);
-    logger.debug('SendGrid error details:', emailErr.response?.body || 'No response body');
-  }
+  logger.error('❌ Failed to build or send thank-you email:', {
+    message: emailErr.message,
+    stack: emailErr.stack,
+    responseBody: emailErr.response?.body || 'No response body'
+  });
+}
 } else {
   logger.warn('⚠️ SENDGRID_API_KEY not set – skipping thank-you email', {
     donor: donorName,
