@@ -188,13 +188,39 @@ console.log('✅ doubleCsrfUtilities:', Object.keys(doubleCsrfUtilities));
 const doubleCsrfProtection = doubleCsrfUtilities.doubleCsrfProtection;
 const generateCsrfToken = doubleCsrfUtilities.generateCsrfToken;
 
+// ✅ Ensure session is initialized and saved
+app.use((req, res, next) => {
+  if (!req.session) {
+    logger.warn('Session not available in middleware');
+    return next(new AppError('Session failed to initialize', 500));
+  }
+
+  // Initialize csrfSecret if not present
+  if (!req.session.csrfSecret) {
+    req.session.csrfSecret = crypto.randomBytes(64).toString('hex');
+  }
+
+  // Save session explicitly to ensure it's persisted
+  req.session.save((err) => {
+    if (err) {
+      logger.error('Session save failed:', err.message);
+      return next(new AppError('Failed to save session', 500));
+    }
+    next();
+  });
+});
+
 // ✅ 6. CSRF Token Generation Middleware
 app.use((req, res, next) => {
   try {
-    res.locals.csrfToken = generateCsrfToken(res, req);
+    if (!req.session || !req.session.csrfSecret) {
+      logger.warn('CSRF token requested but session or secret is missing');
+      res.locals.csrfToken = '';
+    } else {
+      res.locals.csrfToken = generateCsrfToken(res, req);
+    }
   } catch (err) {
     logger.error('CSRF token generation failed:', err.message);
-    // Fallback to empty token if generation fails
     res.locals.csrfToken = '';
   }
   next();

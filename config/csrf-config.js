@@ -6,11 +6,11 @@ const csrfCookieName = isProduction
   : 'hc-csrf-token';
 
 const options = {
-  getSecret: (req) => req.session.csrfSecret,
+  // Leave getSecret to be overridden in server.js
   getSessionIdentifier: (req) => req.sessionID,
   cookieName: csrfCookieName,
   cookieOptions: {
-    httpOnly: false,
+    httpOnly: false, // Must be false to allow frontend access
     sameSite: 'lax',
     secure: isProduction,
     path: '/',
