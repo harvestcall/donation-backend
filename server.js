@@ -211,7 +211,7 @@ const generateCsrfToken = doubleCsrfUtilities.generateCsrfToken;
 
 // ✅ Conditional CSRF Middleware – skip /login POST
 function conditionalCsrfProtection(req, res, next) {
-  const skipPaths = ['/login', '/admin/login'];
+  const skipPaths = ['/login', '/admin/login', '/api/paystack-webhook'];
   if (skipPaths.includes(req.path) && req.method === 'POST') {
     logger.warn('⚠️ Skipping CSRF protection for:', req.path);
     return next();
