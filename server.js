@@ -122,11 +122,25 @@ app.use(session({
   cookie: sessionCookieOptions
 }));
 
-// ✅ Ensure session is initialized early and Logging to session middleware
+// ✅ Clear any legacy/default session cookies (connect.sid)
+app.use((req, res, next) => {
+  if (req.cookies['connect.sid']) {
+    res.clearCookie('connect.sid', {
+      path: '/',
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'lax' : 'strict'
+    });
+    logger.warn('Cleared lingering connect.sid cookie');
+  }
+  next();
+});
+
+// ✅ Log + touch session
 app.use((req, res, next) => {
   if (req.session) {
     req.session.touch();
-    logger.debug('Session touched to extend expiration');
+    logger.debug(`Session touched (ID: ${req.sessionID})`);
   } else {
     logger.warn('Session not available during touch attempt');
   }
