@@ -706,13 +706,20 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
       try {
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-        const htmlContent = buildThankYouEmail({
-          donorFirstName,
-          formattedAmount,
-          paymentReference,
-          purposeText,
-          donationDate
-        });
+        let formattedDonationType = 'One-Time Gift';
+        if (safeMetadata.donationType === 'recurring') {
+         formattedDonationType = 'Monthly Support';
+        }
+
+      const htmlContent = buildThankYouEmail({
+        donorFirstName,
+        formattedAmount,
+        paymentReference,
+        purposeText,
+        donationDate,
+        donationType: formattedDonationType
+  });
+
 
         logger.debug('📄 Generated thank-you email HTML:', htmlContent);
 

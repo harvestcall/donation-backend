@@ -44,7 +44,7 @@ function buildThankYouEmail({
             <p>We're incredibly grateful for your generous donation of <span class="highlight">${formattedAmount}</span> to Harvest Call Ministries.</p>
             <div class="details-card">
               <div class="detail-row"><div class="detail-label">Reference:</div><div class="detail-value">${paymentReference}</div></div>
-              <div class="detail-row"><div class="detail-label">Donation Type:</div><div class="detail-value">${purposeText.split(' -- ')[0]}</div></div>
+              <div class="detail-row"><div class="detail-label">Donation Type:</div><div class="detail-value">${donationType}</div></div>
               <div class="detail-row"><div class="detail-label">Purpose:</div><div class="detail-value">${purposeText}</div></div>
               <div class="detail-row"><div class="detail-label">Date:</div><div class="detail-value">${donationDate}</div></div>
             </div>
