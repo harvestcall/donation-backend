@@ -1843,7 +1843,7 @@ app.get('/staff-dashboard', requireStaffSession, async (req, res, next) => {
     const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
     const donations = await db('donations')
-      .where('metadata->>staffId', staffId.toString())
+      .whereRaw(`metadata->>'staffId' = ?`, [staffId.toString()])
       .whereBetween('created_at', [monthStart, monthEnd])
       .orderBy('created_at', 'desc');
 
