@@ -871,7 +871,7 @@ app.post(
 );
 
 
-// Admin Logout
+
 // Admin Logout
 app.get('/admin/logout', requireAdminSession, (req, res) => {
   req.session.destroy(err => {
@@ -1069,7 +1069,8 @@ app.get('/admin/summary',
         avgGift,
         prev,
         next,
-        title
+        title,
+        month: targetMonth // ✅ Add this line
       });
     } catch (err) {
       next(new DatabaseError('Failed to load admin summary'));
@@ -1078,6 +1079,7 @@ app.get('/admin/summary',
 );
 
 // Export Admin Summary
+// Export Admin Summary
 app.get('/admin/export/summary', requireAdminSession, async (req, res, next) => {
   const format = req.query.format || 'csv';
   const targetMonth = req.query.month || new Date().toISOString().slice(0, 7);
@@ -1085,45 +1087,56 @@ app.get('/admin/export/summary', requireAdminSession, async (req, res, next) => 
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
-  const [allStaff, allProjects, aggregatedData] = await Promise.all([
-    db('staff').select('id', 'name', 'active'),
-    db('projects').select('id', 'name'),
-    db('donations')
-      .select(
-        db.raw("CASE WHEN metadata->>'staffId' ~ '^\\d+$' THEN (metadata->>'staffId')::integer ELSE NULL END as staff_id"),
-        db.raw("CASE WHEN metadata->>'projectId' ~ '^\\d+$' THEN (metadata->>'projectId')::integer ELSE NULL END as project_id"),
-        db.raw('SUM(amount) as total_amount')
-      )
-      .whereBetween('created_at', [monthStart, monthEnd])
-      .groupBy('staff_id', 'project_id')
-  ]);
+  try {
+    const [allStaff, allProjects, aggregatedData] = await Promise.all([
+      db('staff').select('id', 'name', 'active'),
+      db('projects').select('id', 'name'),
+      db('donations')
+        .select(
+          db.raw("CASE WHEN metadata->>'staffId' ~ '^\\d+$' THEN (metadata->>'staffId')::integer ELSE NULL END as staff_id"),
+          db.raw("CASE WHEN metadata->>'projectId' ~ '^\\d+$' THEN (metadata->>'projectId')::integer ELSE NULL END as project_id"),
+          db.raw('SUM(amount) as total_amount')
+        )
+        .whereBetween('created_at', [monthStart, monthEnd])
+        .groupBy('staff_id', 'project_id')
+    ]);
 
-  const staffMap = new Map(allStaff.map(s => [s.id, s]));
-  const projectMap = new Map(allProjects.map(p => [p.id, p]));
+    const staffMap = new Map(allStaff.map(s => [s.id, s]));
+    const projectMap = new Map(allProjects.map(p => [p.id, p]));
 
-  const rows = [];
+    const rows = [];
 
-  for (const row of aggregatedData) {
-    const amount = row.total_amount / 100;
-    if (row.staff_id && staffMap.has(row.staff_id)) {
-      const staff = staffMap.get(row.staff_id);
-      rows.push([staff.name, 'Staff', amount]);
-    } else if (row.project_id && projectMap.has(row.project_id)) {
-      const project = projectMap.get(row.project_id);
-      rows.push([project.name, 'Project', amount]);
+    for (const row of aggregatedData) {
+      const amount = row.total_amount / 100;
+      if (row.staff_id && staffMap.has(row.staff_id)) {
+        const staff = staffMap.get(row.staff_id);
+        rows.push([staff.name, 'Staff', amount]);
+      } else if (row.project_id && projectMap.has(row.project_id)) {
+        const project = projectMap.get(row.project_id);
+        rows.push([project.name, 'Project', amount]);
+      }
     }
-  }
 
-  if (format === 'csv') {
-    let csv = 'Recipient,Type,Amount (₦)\n';
-    csv += rows.map(r => `"${r[0]}","${r[1]}","${r[2]}"`).join('\n');
-    res.header('Content-Type', 'text/csv');
-    res.attachment(`donation-summary-${targetMonth}.csv`);
-    return res.send(csv);
-  }
+    if (format === 'csv') {
+      let csv = 'Recipient,Type,Amount (₦)\n';
 
-  res.status(400).send('Invalid format requested');
+      // ✅ FIX #1 — Use backticks and template literals
+      csv += rows.map(r => `"${r[0]}","${r[1]}","${r[2]}"`).join('\n');
+
+      res.header('Content-Type', 'text/csv');
+
+      // ✅ FIX #2 — Use backticks for filename too
+      res.attachment(`donation-summary-${targetMonth}.csv`);
+
+      return res.send(csv);
+    }
+
+    res.status(400).send('Invalid format requested');
+  } catch (err) {
+    next(new DatabaseError('Failed to export summary'));
+  }
 });
+
 
 
 // View and manage staff accounts (/admin/staff)
@@ -1383,17 +1396,6 @@ app.post('/admin/add-staff-account',
     }
   }
 );
-
-const knex = require('./db'); // Adjust if needed
-
-(async () => {
-  try {
-    await knex.migrate.latest();
-    console.log('✅ Migrations ran successfully in production');
-  } catch (err) {
-    console.error('❌ Migration error in production:', err);
-  }
-})();
 
 
 // Show assign projects form
