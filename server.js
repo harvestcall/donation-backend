@@ -1384,6 +1384,17 @@ app.post('/admin/add-staff-account',
   }
 );
 
+const knex = require('./db'); // Adjust if needed
+
+(async () => {
+  try {
+    await knex.migrate.latest();
+    console.log('✅ Migrations ran successfully in production');
+  } catch (err) {
+    console.error('❌ Migration error in production:', err);
+  }
+})();
+
 
 // Show assign projects form
 app.get('/admin/assign-projects', requireAdminSession, async (req, res) => {
