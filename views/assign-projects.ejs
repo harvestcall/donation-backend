@@ -1,73 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Assign Projects to Staff</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Assign Projects – Admin</title>
   <style nonce="<%= cspNonce %>">
-    body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 30px; }
-    h2 { text-align: center; margin-bottom: 20px; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 40px;
+      color: #333;
+    }
+    h1 {
+      color: #003366;
+      margin-bottom: 30px;
+      text-align: center;
+    }
     form {
-      background: white;
-      padding: 20px;
-      max-width: 600px;
-      margin: auto;
+      background: #fff;
+      padding: 25px;
       border-radius: 8px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      max-width: 600px;
+      margin: auto;
     }
-    label, select, input[type=submit] {
+    label {
+      font-weight: bold;
+      margin-top: 15px;
       display: block;
-      margin-bottom: 15px;
+    }
+    select, button {
       width: 100%;
-    }
-    select, input[type=submit] {
       padding: 10px;
-      border-radius: 5px;
+      margin-top: 10px;
+      border-radius: 4px;
       border: 1px solid #ccc;
+      font-size: 16px;
     }
-    input[type=checkbox] { margin-right: 10px; }
-    .project-item { margin-bottom: 10px; }
-    .btn {
-      background: #2E7D32;
+    button {
+      background: #003366;
       color: white;
       border: none;
       cursor: pointer;
-      padding: 10px;
+      margin-top: 25px;
     }
-    .btn:hover { background: #256429; }
-    a {
+    button:hover {
+      background: #002244;
+    }
+    .back-link {
       display: block;
       text-align: center;
       margin-top: 20px;
       color: #003366;
       text-decoration: none;
     }
+    .hint {
+      font-size: 13px;
+      color: #666;
+      margin-top: 5px;
+      display: block;
+    }
   </style>
 </head>
 <body>
-  <h2>📌 Assign Projects to Staff</h2>
-
+  <h1>Assign Projects to Staff</h1>
   <form method="POST" action="/admin/assign-projects">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
     <label for="staffId">Select Staff</label>
-    <select name="staffId" required>
-      <option value="">-- Choose Staff --</option>
-      <% staff.forEach(s => { %>
-        <option value="<%= s.id %>"><%= s.name %></option>
+    <select name="staffId" id="staffId" required>
+      <option value="">-- Choose a staff member --</option>
+      <% staff.forEach(member => { %>
+        <option value="<%= member.id %>"><%= member.name %></option>
       <% }) %>
     </select>
 
-    <label>Choose Project(s)</label>
-    <% projects.forEach(p => { %>
-      <div class="project-item">
-        <input type="checkbox" name="projectIds" value="<%= p.id %>" id="project-<%= p.id %>" />
-        <label for="project-<%= p.id %>"><%= p.name %></label>
-      </div>
-    <% }) %>
+    <label for="projectIds">Select Projects</label>
+    <select name="projectIds" id="projectIds" multiple size="6" required>
+      <% projects.forEach(project => { %>
+        <option value="<%= project.id %>"><%= project.name %></option>
+      <% }) %>
+    </select>
+    <span class="hint">Hold down Ctrl (Windows) or ⌘ Command (Mac) to select multiple projects.</span>
 
-    <input class="btn" type="submit" value="Assign Projects">
+    <button type="submit">Assign Projects</button>
   </form>
 
-  <a href="/admin/summary">← Back to Admin Dashboard</a>
+  <a href="/admin/projects" class="back-link">← Back to Projects</a>
 </body>
 </html>
