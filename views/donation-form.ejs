@@ -1578,7 +1578,7 @@ async function initDonateButton() {
                 currency: currency,
                 name: document.getElementById('full-name').value.trim(), // ✅ top-level
                 staffId: selectedAllocation?.type === 'staff' ? selectedAllocation.id : null, // ✅ top-level
-                projectId: selectedAllocation?.type === 'projects' ? selectedAllocation.id : null, // ✅ top-level
+                projectId: selectedAllocation?.type === 'project' ? selectedAllocation.id : null, // ✅ top-level
                 donationType: type, // ✅ also top-level
                 purpose: selectedAllocation?.type || 'general', // ✅ also top-level
                 phone: phone, // optional, if backend uses it
