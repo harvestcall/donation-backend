@@ -665,16 +665,16 @@ app.post('/webhook', webhookLimiter, verifyPaystackWebhook, async (req, res, nex
     }
 
     if (safeMetadata.projectId && typeof safeMetadata.projectId === 'string' && /^\d+$/.test(safeMetadata.projectId.trim())) {
-      projectName = await getDisplayName('projects', parseInt(safeMetadata.projectId.trim(), 10), db);
+      projectName = await getDisplayName('project', parseInt(safeMetadata.projectId.trim(), 10), db);
     }
 
     // 🎯 Build dynamic purpose text based on context
     if (staffName && projectName) {
-      purposeText = `Staff + Project Support -- ${staffName} & ${projectName}`;
+      purposeText = `Staff + Project Support – ${staffName} & ${projectName}`;
     } else if (staffName) {
-      purposeText = `Staff Support -- ${staffName}`;
+      purposeText = `Staff Support – ${staffName}`;
     } else if (projectName) {
-      purposeText = `Project Support -- ${projectName}`;
+      purposeText = `Project Support – ${projectName}`;
     } else {
       logger.warn('❌ No valid staffId or projectId in metadata.');
     }
