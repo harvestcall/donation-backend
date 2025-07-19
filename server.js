@@ -1385,9 +1385,8 @@ app.post('/admin/add-staff-account',
 );
 
 
-
 // Show assign projects form
-app.get('/admin/assign-projects', requireAdminSession, async (req, res, next) => {
+app.get('/admin/assign-projects', requireAdminSession, async (req, res) => {
   try {
     const staff = await db('staff').where({ active: true }).orderBy('name');
     const projects = await db('projects').where({ active: true }).orderBy('name');
@@ -1398,13 +1397,15 @@ app.get('/admin/assign-projects', requireAdminSession, async (req, res, next) =>
       cspNonce: res.locals.cspNonce
     });
   } catch (err) {
-    next(new DatabaseError('Failed to load project assignment form.'));
+    console.error('🔥 Failed to load assign-projects form:', err);
+    res.status(500).send(`<pre>${err.stack}</pre>`);
   }
 });
 
 
+
 // Handle project assignment
-app.post('/admin/assign-projects', requireAdminSession, async (req, res, next) => {
+app.post('/admin/assign-projects', requireAdminSession, async (req, res) => {
   const staffId = req.body.staffId;
   const selectedProjects = Array.isArray(req.body.projectIds)
     ? req.body.projectIds
@@ -1412,14 +1413,32 @@ app.post('/admin/assign-projects', requireAdminSession, async (req, res, next) =
 
   try {
     const now = new Date().toISOString();
-const assignments = selectedProjects.map(pid => ({
-  staff_id: staffId,
-  project_id: pid,
-  created_at: now
-}));
+    const assignments = selectedProjects.map(pid => ({
+      staff_id: staffId,
+      project_id: pid,
+      created_at: now
+    }));
 
+    // ✅ Validate staffId
+    if (!staffId || isNaN(staffId) || staffId <= 0) {
+      throw new Error('Invalid staff ID');
+    }
 
-    // ✅ Wrap both delete + insert in a transaction
+    // ✅ Validate projectIds
+    if (!Array.isArray(selectedProjects) || !selectedProjects.length) {
+      return res.status(400).send('No projects selected');
+    }
+
+    // ✅ Check if staff exists
+    const staffExists = await db('staff').where({ id: staffId, active: true }).first();
+    if (!staffExists) {
+      return res.status(404).send('Staff not found');
+    }
+
+    // ✅ Log assignment
+    logger.info(`Assigning ${assignments.length} projects to staff ID ${staffId}`, assignments);
+
+    // ✅ Perform transaction
     await db.transaction(async trx => {
       await trx('staff_projects').where({ staff_id: staffId }).del();
 
@@ -1428,11 +1447,13 @@ const assignments = selectedProjects.map(pid => ({
       }
     });
 
-    res.redirect('/admin/projects'); // ✅ Don’t forget response!
+    res.redirect('/admin/projects');
   } catch (err) {
-  next(new DatabaseError('Failed to assign projects.'));
-}
+    console.error('🔥 REAL ERROR in POST assign-projects:', err);
+    res.status(500).send(`<pre>${err.stack}</pre>`);
+  }
 });
+
 
 
 // ✅ Login Form - GET (Fixed)
